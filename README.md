@@ -53,15 +53,3 @@ A sample `config.json` file based on the `Config` struct in `main.go` looks like
 ```
 
 Replace the placeholder values with your actual configuration details.
-
-## Contributing
-
-Contributions to WGUI are welcome! Feel free to submit pull requests, report issues, or suggest improvements.
-
-## License
-
-WGUI is open-source software licensed under the MIT License.
-
----
-
-This README provides a comprehensive overview of the WGUI project, including its features, setup instructions, peer management details, role descriptions, and a sample configuration file.
