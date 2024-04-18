@@ -1,5 +1,3 @@
-Given the structure of the information provided and the nature of the `alirezasn3/wgui` project, a comprehensive README for the project might look something like this:
-
 # WGUI - WireGuard User Interface
 
 WGUI is a web-based user interface designed to simplify the management of WireGuard VPN configurations and peers. It provides an intuitive interface for creating, editing, and managing VPN peers, with a focus on ease of use and accessibility.
