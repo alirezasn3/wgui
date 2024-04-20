@@ -5,34 +5,21 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"log/slog"
 	"net"
-	"net/http"
-	"net/url"
 	"os"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/labstack/echo"
-	el "github.com/labstack/gommon/log"
+	"github.com/labstack/echo/v4"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
-
-type ServerSpecificInfo struct {
-	Address           string `json:"address" bson:"address"`
-	LastHandshakeTime string `json:"lastHandshakeTime" bson:"lastHandshakeTime"`
-	Endpoint          string `json:"endpoint" bson:"endpoint"`
-	CurrentTX         int64  `json:"currentTX" bson:"currentTX"`
-	CurrentRX         int64  `json:"currentRX" bson:"currentRX"`
-}
 
 type Config struct {
 	MongoURI             string   `json:"mongoURI"`
@@ -50,76 +37,13 @@ type Peers struct {
 	mu    sync.RWMutex
 }
 
-type Peer struct {
-	ID                 string                `json:"_id" bson:"_id"`
-	Role               string                `json:"role" bson:"role"`
-	Name               string                `json:"name" bson:"name"`
-	PreferredEndpoint  string                `json:"preferredEndpoint" bson:"preferredEndpoint"`
-	AllowedIPs         string                `json:"allowedIPs" bson:"allowedIPs"`
-	PublicKey          string                `json:"publicKey" bson:"publicKey"`
-	PrivateKey         string                `json:"privateKey" bson:"privateKey"`
-	Disabled           bool                  `json:"disabled" bson:"disabled"`
-	AllowedUsage       int64                 `json:"allowedUsage" bson:"allowedUsage"`
-	ExpiresAt          int64                 `json:"expiresAt" bson:"expiresAt"`
-	Endpoint           string                `json:"-" bson:"-"`
-	LastHandshakeTime  string                `json:"-" bson:"-"`
-	TempTX             int64                 `json:"-" bson:"-"`
-	TempRX             int64                 `json:"-" bson:"-"`
-	CurrentTX          int64                 `json:"-" bson:"-"`
-	CurrentRX          int64                 `json:"-" bson:"-"`
-	TotalTX            int64                 `json:"totalTX" bson:"totalTX"`
-	TotalRX            int64                 `json:"totalRX" bson:"totalRX"`
-	ServerSpecificInfo []*ServerSpecificInfo `json:"serverSpecificInfo" bson:"serverSpecificInfo"`
-}
-
-func (peer *Peer) FindSSIByAddress(address string) *ServerSpecificInfo {
-	peers.mu.RLock()
-	defer peers.mu.RUnlock()
-	for _, ssi := range peer.ServerSpecificInfo {
-		if ssi.Address == address {
-			return ssi
-		}
-	}
-	return nil
-}
-
-type Log struct {
-	Time          int64  `json:"time" bson:"time"`
-	Level         string `json:"level" bson:"level"`
-	Message       string `json:"msg" bson:"msg"`
-	Peer          string `json:"peer" bson:"peer"`
-	PublicAddress string `json:"publicAddress" bson:"publicAddress"`
-}
-
-type customWriter struct {
-	w          io.Writer
-	collection *mongo.Collection
-}
-
-func (e customWriter) Write(p []byte) (int, error) {
-	go func() {
-		var l Log
-		err := json.Unmarshal(p, &l)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		_, err = e.collection.InsertOne(context.TODO(), l)
-		if err != nil {
-			fmt.Println(err)
-		}
-	}()
-	return fmt.Println(string(p))
-}
-
-var peers Peers
+var peers Peers                  // used to intract with peers concurrently
 var config Config                // used to store app configuration
 var wgc *wgctrl.Client           // used to interact with wireguard interfaces
 var device *wgtypes.Device       // actual wireguard interface
 var collection *mongo.Collection // peers collection on database
-var ioWriter customWriter        // io writer that writes to database and stdout
+var ioWriter CustomWriter        // io writer that writes to database and stdout
 var logger *slog.Logger          // custom logger that writes logs to database and stdout
-var deviceCIDR *net.IPNet        // used to check if requests or from device peers
 
 func init() {
 	// init local map
@@ -139,12 +63,6 @@ func init() {
 		panic(err)
 	}
 	log.Println("Loaded config from " + configPath)
-
-	// parse device cidr
-	_, deviceCIDR, err = net.ParseCIDR(config.InterfaceAddressCIDR)
-	if err != nil {
-		panic(err)
-	}
 
 	// create wireguard client
 	wgc, err = wgctrl.New()
@@ -181,7 +99,7 @@ func init() {
 	}
 
 	// setup logger
-	ioWriter = customWriter{w: os.Stdout, collection: mongoClient.Database(config.DBName).Collection("logs")}
+	ioWriter = CustomWriter{W: os.Stdout, Collection: mongoClient.Database(config.DBName).Collection("logs")}
 	logger = slog.New(slog.NewJSONHandler(ioWriter, &slog.HandlerOptions{AddSource: true, ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 		if a.Key == "time" {
 			return slog.Int64("time", time.Now().UnixMilli())
@@ -788,483 +706,22 @@ func main() {
 	// create echo instance
 	e := echo.New()
 
-	// set logs to error only
-	e.Logger.SetLevel(el.ERROR)
-
 	// handle static files
 	e.Static("/", os.Args[1]+"public/build")
 
 	// check if request is from a peer
-	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(ctx echo.Context) error {
-			if !deviceCIDR.Contains(net.ParseIP(strings.Split(ctx.Request().RemoteAddr, ":")[0])) {
-				logger.Warn("Unauthorized request from " + ctx.Request().RemoteAddr)
-				return ctx.NoContent(403)
-			}
-			return next(ctx)
-		}
-	})
+	e.Use(Auth)
 
-	// check if peer is authenticated
-	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(ctx echo.Context) error {
-			if !strings.Contains(ctx.Request().URL.Path, "/api/") || ctx.Request().URL.Path == "/api/auth" {
-				return next(ctx)
-			}
-			cookie, err := ctx.Cookie("id")
-			if err == nil {
-				if p, ok := peers.peers[cookie.Value]; ok {
-					ctx.Set("role", p.Role)
-					ctx.Set("name", p.Name)
-					ctx.Set("id", p.ID)
-					ctx.Set("group", strings.Split(p.Name, "-")[0]+"-")
-					return next(ctx)
-				}
-			}
-			logger.Warn("Unauthenticated request from " + ctx.Request().RemoteAddr)
-			return ctx.NoContent(401)
-		}
-	})
-
-	e.GET("/api/auth", func(ctx echo.Context) error {
-		peers.mu.RLock()
-		defer peers.mu.RUnlock()
-		for _, p := range peers.peers {
-			if p.AllowedIPs == strings.Split(ctx.Request().RemoteAddr, ":")[0]+"/32" {
-				cookie := new(http.Cookie)
-				cookie.Name = "id"
-				cookie.Value = p.ID
-				cookie.Expires = time.Now().Add(24 * time.Hour * 24)
-				cookie.Secure = true
-				cookie.HttpOnly = true
-				ctx.SetCookie(cookie)
-				return ctx.NoContent(200)
-			}
-		}
-		return ctx.NoContent(403)
-	})
-	e.GET("/api/peers", func(ctx echo.Context) error {
-		role := ctx.Get("role").(string)
-		group := ctx.Get("group").(string)
-
-		if role == "admin" {
-			// return all peers
-			return ctx.JSON(200, map[string]interface{}{"role": role, "peers": peers.peers})
-		} else {
-			// return only group's peers if user is not admin
-			var data []*Peer
-			peers.mu.RLock()
-			defer peers.mu.RUnlock()
-			for _, p := range peers.peers {
-				if strings.HasPrefix(p.Name, group) {
-					data = append(data, p)
-				}
-			}
-			return ctx.JSON(200, map[string]interface{}{"role": role, "peers": data})
-		}
-	})
-	e.GET("/api/peers/:id", func(ctx echo.Context) error {
-		role := ctx.Get("role").(string)
-		group := ctx.Get("group").(string)
-
-		// decode uri
-		id, err := url.QueryUnescape(ctx.Param("id"))
-		if err != nil {
-			return ctx.NoContent(400)
-		}
-
-		// check if peer exists
-		p, ok := peers.peers[id]
-		if !ok {
-			return ctx.NoContent(404)
-		}
-
-		// check if the requested peer is in the same group as the user
-		if role != "admin" {
-			if !strings.HasPrefix(p.Name, group) {
-				return ctx.NoContent(403)
-			}
-		}
-
-		// return peer
-		return ctx.JSON(200, p)
-	})
-	e.POST("/api/peers", func(ctx echo.Context) error {
-		role := ctx.Get("role").(string)
-		group := ctx.Get("group").(string)
-
-		if role == "user" {
-			return ctx.NoContent(403)
-		}
-
-		// get peer info from request body
-		var data Peer
-		err := json.NewDecoder(ctx.Request().Body).Decode(&data)
-		if err != nil {
-			return ctx.String(400, err.Error())
-		}
-
-		// check if the requested peer is in the same group as the user
-		if role == "distributor" {
-			if !strings.HasPrefix(data.Name, group) {
-				return ctx.NoContent(403)
-			}
-		}
-
-		// create private and public keys
-		privateKey, err := wgtypes.GeneratePrivateKey()
-		if err != nil {
-			logger.Error(err.Error(), slog.String("peer", data.Name))
-			return ctx.String(500, err.Error())
-		}
-		publicKey := privateKey.PublicKey()
-		data.PrivateKey = privateKey.String()
-		data.PublicKey = publicKey.String()
-
-		// set id
-		data.ID = publicKey.String()
-
-		// find unused ip
-		var ip IPAddress
-		err = ip.Parse(config.InterfaceAddress)
-		if err != nil {
-			logger.Error(err.Error(), slog.String("peer", data.Name))
-			return ctx.String(500, err.Error())
-		}
-		ip.Increment()
-
-		peers.mu.Lock()
-		defer peers.mu.Unlock()
-
-	findIP:
-		// update device
-		device, err = wgc.Device(config.InterfaceName)
-		if err != nil {
-			logger.Error(err.Error(), slog.String("peer", data.Name))
-			return ctx.String(500, err.Error())
-		}
-
-		for slices.ContainsFunc(device.Peers, func(p wgtypes.Peer) bool {
-			for _, aip := range p.AllowedIPs {
-				if aip.String() == ip.ToString()+"/32" {
-					return true
-				}
-			}
-			return false
-		}) {
-			ip.Increment()
-		}
-
-		_, allowedIPs, err := net.ParseCIDR(ip.ToString() + "/32")
-		if err != nil {
-			logger.Error(err.Error(), slog.String("peer", data.Name))
-			return ctx.String(500, err.Error())
-		}
-		data.AllowedIPs = ip.ToString() + "/32"
-
-		var udpAddress *net.UDPAddr = nil
-
-		if len(data.Endpoint) > 0 {
-			udpAddress, err = net.ResolveUDPAddr("udp4", data.Endpoint)
-			if err != nil {
-				return ctx.String(400, err.Error())
-			}
-		}
-
-		data.ServerSpecificInfo = []*ServerSpecificInfo{{Address: config.PublicAddress}}
-
-		// add peer to local map
-		peers.peers[data.PublicKey] = &data
-
-		// add peer to database
-		_, err = collection.InsertOne(context.TODO(), data)
-		if err != nil {
-			// Check if the error is a duplicate key error
-			if writeException, ok := err.(mongo.WriteException); ok {
-				for _, writeError := range writeException.WriteErrors {
-					if writeError.Code == 11000 {
-						logger.Error("duplicate key error when inserting into database", slog.String("peer", data.Name))
-						ip.Increment()
-						goto findIP
-					}
-				}
-			} else {
-				delete(peers.peers, data.PublicKey)
-				logger.Error(err.Error(), slog.String("peer", data.Name))
-				return ctx.String(500, err.Error())
-			}
-		}
-
-		// add peer to device
-		err = wgc.ConfigureDevice(config.InterfaceName, wgtypes.Config{Peers: []wgtypes.PeerConfig{{
-			PublicKey:  publicKey,
-			AllowedIPs: []net.IPNet{*allowedIPs},
-			Endpoint:   udpAddress,
-		}}})
-		if err != nil {
-			delete(peers.peers, data.PublicKey)
-			logger.Error(err.Error(), slog.String("peer", data.Name))
-			return ctx.String(500, err.Error())
-		}
-
-		logger.Info("Peer Created", slog.String("peer", data.Name))
-
-		return ctx.String(201, data.PublicKey)
-	})
-	e.DELETE("/api/peers/:id", func(ctx echo.Context) error {
-		role := ctx.Get("role").(string)
-		group := ctx.Get("group").(string)
-
-		if role == "user" {
-			return ctx.NoContent(403)
-		}
-
-		// decode uri
-		id, err := url.QueryUnescape(ctx.Param("id"))
-		if err != nil {
-			return ctx.NoContent(400)
-		}
-
-		// check if peer exists
-		p, ok := peers.peers[id]
-		if !ok {
-			return ctx.NoContent(400)
-		}
-
-		// check if the requested peer is in the same group as the user
-		if role == "distributor" {
-			if !strings.HasPrefix(p.Name, group) {
-				return ctx.NoContent(403)
-			}
-		}
-
-		// parse peer public key
-		pk, err := wgtypes.ParseKey(p.PublicKey)
-		if err != nil {
-			logger.Error(err.Error(), slog.String("peer", p.Name))
-			return ctx.String(500, err.Error())
-		}
-
-		// remove peer from device
-		err = wgc.ConfigureDevice(config.InterfaceName, wgtypes.Config{Peers: []wgtypes.PeerConfig{{
-			PublicKey: pk,
-			Remove:    true,
-		}}})
-		if err != nil {
-			logger.Error(err.Error(), slog.String("peer", p.Name))
-			return ctx.String(500, err.Error())
-		}
-
-		// delete peer from database
-		_, err = collection.DeleteOne(context.TODO(), bson.M{"name": p.Name})
-		if err != nil {
-			logger.Error(err.Error(), slog.String("peer", p.Name))
-			return ctx.String(500, err.Error())
-		}
-
-		logger.Info("Peer removed", slog.String("peer", p.Name))
-
-		peers.mu.Lock()
-		defer peers.mu.Unlock()
-		// delete peer from local map
-		delete(peers.peers, p.ID)
-
-		return ctx.NoContent(200)
-	})
-	e.PATCH("/api/peers/:id", func(ctx echo.Context) error {
-		role := ctx.Get("role").(string)
-		group := ctx.Get("group").(string)
-
-		if role == "user" {
-			return ctx.NoContent(403)
-		}
-
-		// decode uri
-		id, err := url.QueryUnescape(ctx.Param("id"))
-		if err != nil {
-			return ctx.NoContent(400)
-		}
-
-		// check if peer exists
-		p, ok := peers.peers[id]
-		if !ok {
-			return ctx.NoContent(400)
-		}
-
-		// check if the requested peer is in the same group as the user
-		if role == "distributor" {
-			if !strings.HasPrefix(p.Name, group) {
-				return ctx.NoContent(403)
-			}
-		}
-
-		data := make(map[string]interface{})
-		err = json.NewDecoder(ctx.Request().Body).Decode(&data)
-		if err != nil {
-			return ctx.String(400, err.Error())
-		}
-
-		var updates []mongo.WriteModel
-		newPeerConfig := wgtypes.PeerConfig{UpdateOnly: true}
-
-		// parse peer public key
-		pk, err := wgtypes.ParseKey(p.PublicKey)
-		if err != nil {
-			logger.Error(err.Error(), slog.String("peer", p.Name))
-			return ctx.String(500, err.Error())
-		}
-		newPeerConfig.PublicKey = pk
-
-		if preferredEndpoint, ok := data["preferredEndpoint"].(string); ok {
-			update := mongo.NewUpdateOneModel()
-			update.SetFilter(bson.M{"publicKey": p.PublicKey})
-			if preferredEndpoint == "" {
-				update.SetUpdate(bson.M{"$set": bson.M{"preferredEndpoint": ""}})
-				newPeerConfig.Endpoint = nil
-			} else {
-				udpAddress, err := net.ResolveUDPAddr("udp4", preferredEndpoint)
-				if err != nil {
-					return ctx.String(400, err.Error())
-				}
-				update.SetUpdate(bson.M{"$set": bson.M{"preferredEndpoint": udpAddress.String()}})
-				newPeerConfig.Endpoint = udpAddress
-			}
-			updates = append(updates, update)
-
-			err = wgc.ConfigureDevice(config.InterfaceName, wgtypes.Config{Peers: []wgtypes.PeerConfig{newPeerConfig}})
-			if err != nil {
-				logger.Error(err.Error(), slog.String("peer", p.Name))
-				return ctx.String(500, err.Error())
-			}
-			peers.mu.Lock()
-			p.PreferredEndpoint = preferredEndpoint
-			peers.mu.Unlock()
-		}
-
-		if allowedUsage, ok := data["allowedUsage"].(float64); ok {
-			update := mongo.NewUpdateOneModel()
-			update.SetFilter(bson.M{"publicKey": p.PublicKey})
-			update.SetUpdate(bson.M{"$set": bson.M{"allowedUsage": int64(allowedUsage)}})
-			updates = append(updates, update)
-			peers.mu.Lock()
-			p.AllowedUsage = int64(allowedUsage)
-			peers.mu.Unlock()
-		}
-
-		if expiresAt, ok := data["expiresAt"].(float64); ok {
-			update := mongo.NewUpdateOneModel()
-			update.SetFilter(bson.M{"publicKey": p.PublicKey})
-			update.SetUpdate(bson.M{"$set": bson.M{"expiresAt": int64(expiresAt)}})
-			updates = append(updates, update)
-			peers.mu.Lock()
-			p.ExpiresAt = int64(expiresAt)
-			peers.mu.Unlock()
-		}
-
-		if role, ok := data["role"].(string); ok {
-			update := mongo.NewUpdateOneModel()
-			update.SetFilter(bson.M{"publicKey": p.PublicKey})
-			update.SetUpdate(bson.M{"$set": bson.M{"role": role}})
-			updates = append(updates, update)
-			peers.mu.Lock()
-			p.Role = role
-			peers.mu.Unlock()
-		}
-
-		if name, ok := data["name"].(string); ok {
-			update := mongo.NewUpdateOneModel()
-			update.SetFilter(bson.M{"publicKey": p.PublicKey})
-			update.SetUpdate(bson.M{"$set": bson.M{"name": name}})
-			updates = append(updates, update)
-			peers.mu.Lock()
-			p.Name = name
-			peers.mu.Unlock()
-		}
-
-		// update database
-		if len(updates) > 0 {
-			_, err := collection.BulkWrite(context.TODO(), updates, &options.BulkWriteOptions{})
-			if err != nil {
-				logger.Error(err.Error(), slog.String("peer", p.Name))
-				return ctx.String(500, err.Error())
-			}
-		}
-
-		return ctx.NoContent(200)
-	})
-	e.PUT("/api/peers/:id", func(ctx echo.Context) error {
-		role := ctx.Get("role").(string)
-		group := ctx.Get("group").(string)
-
-		if role == "user" {
-			return ctx.NoContent(403)
-		}
-
-		// decode uri
-		id, err := url.QueryUnescape(ctx.Param("id"))
-		if err != nil {
-			return ctx.NoContent(400)
-		}
-
-		// check if peer exists
-		p, ok := peers.peers[id]
-		if !ok {
-			return ctx.NoContent(400)
-		}
-
-		// check if the requested peer is in the same group as the user
-		if role == "distributor" {
-			if !strings.HasPrefix(p.Name, group) {
-				return ctx.NoContent(403)
-			}
-		}
-
-		_, err = collection.UpdateByID(context.TODO(), p.ID, bson.M{"$set": bson.M{
-			"totalTX": int64(0), "totalRX": int64(0),
-		}})
-		if err != nil {
-			logger.Error(err.Error(), slog.String("peer", p.Name))
-			return ctx.String(500, err.Error())
-		}
-
-		peers.mu.Lock()
-		defer peers.mu.Unlock()
-		p.TotalTX = 0
-		p.TotalRX = 0
-
-		return nil
-	})
-	e.GET("/api/config", func(ctx echo.Context) error {
-		return ctx.JSON(200, map[string]interface{}{"serverPublicKey": device.PublicKey.String(), "serverAddress": fmt.Sprintf("%s:%d", config.PublicAddress, device.ListenPort), "endpoints": config.Endpoints})
-	})
-	e.GET("/api/me", func(ctx echo.Context) error {
-		role := ctx.Get("role").(string)
-		group := ctx.Get("group").(string)
-		if role == "distributor" {
-			return ctx.JSON(200, map[string]interface{}{"role": role, "prefix": group})
-		}
-		return ctx.JSON(200, map[string]interface{}{"role": role, "prefix": ""})
-	})
-	e.GET("/api/logs", func(ctx echo.Context) error {
-		role := ctx.Get("role").(string)
-
-		if role != "admin" {
-			return ctx.NoContent(403)
-		}
-
-		var logs []Log
-		cursor, err := ioWriter.collection.Find(context.Background(), bson.M{})
-		if err != nil {
-			logger.Error(err.Error())
-			return ctx.String(500, err.Error())
-		}
-		if err = cursor.All(context.TODO(), &logs); err != nil {
-			logger.Error(err.Error())
-			return ctx.String(500, err.Error())
-		}
-
-		return ctx.JSON(200, logs)
-	})
+	e.GET("/api/auth", GetAuth)
+	e.GET("/api/peers", GetPeers)
+	e.GET("/api/peers/:id", GetPeer)
+	e.POST("/api/peers", PostPeers)
+	e.DELETE("/api/peers/:id", DeletePeers)
+	e.PATCH("/api/peers/:id", PatchPeers)
+	e.PUT("/api/peers/:id", PutPeers)
+	e.GET("/api/config", GetConfig)
+	e.GET("/api/me", GetMe)
+	e.GET("/api/logs", GetLogs)
 
 	if len(os.Args) > 1 {
 		e.Logger.Fatal(e.StartTLS("0.0.0.0:443", os.Args[1]+"certs/server.pem", os.Args[1]+"certs/server.key"))

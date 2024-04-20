@@ -4,7 +4,7 @@
         "**/node_modules": true,
         "**/.svelte-kit": true,
         "**/.prettierignore": true,
-        // "**/.prettierrc": true,
+        "**/.prettierrc": true,
         "**/package-lock.json": true,
         "**/postcss.config.js": true,
         "**/svelte.config.js": true,
