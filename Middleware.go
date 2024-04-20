@@ -7,17 +7,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-var deviceCIDR *net.IPNet
-
-func init() {
-	var e error
-	// used to check if requests is from peers
-	_, deviceCIDR, e = net.ParseCIDR(config.InterfaceAddressCIDR)
-	if e != nil {
-		panic(e)
-	}
-}
-
 func Auth(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(ctx echo.Context) error {
 		// check if request is from peer

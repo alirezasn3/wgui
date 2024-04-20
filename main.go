@@ -44,6 +44,7 @@ var device *wgtypes.Device       // actual wireguard interface
 var collection *mongo.Collection // peers collection on database
 var ioWriter CustomWriter        // io writer that writes to database and stdout
 var logger *slog.Logger          // custom logger that writes logs to database and stdout
+var deviceCIDR *net.IPNet        // used to check if client is in device subnet
 
 func init() {
 	// init local map
@@ -63,6 +64,11 @@ func init() {
 		panic(err)
 	}
 	log.Println("Loaded config from " + configPath)
+
+	_, deviceCIDR, err = net.ParseCIDR(config.InterfaceAddressCIDR)
+	if err != nil {
+		panic(err)
+	}
 
 	// create wireguard client
 	wgc, err = wgctrl.New()
