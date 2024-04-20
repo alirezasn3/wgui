@@ -289,6 +289,9 @@ func init() {
 		logger.Error(err.Error())
 		panic(err)
 	}
+
+	// log the start of application
+	logger.Info("Server started")
 }
 
 func main() {
