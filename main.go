@@ -224,17 +224,24 @@ func init() {
 	// store peers that are missing from device
 	var missingPeersOnDevice []wgtypes.PeerConfig
 
+	// update device
+	device, err = wgc.Device(config.InterfaceName)
+	if err != nil {
+		logger.Error(err.Error())
+		panic(err)
+	}
+
 	// ssi udpates
 	var updates []mongo.WriteModel
 
 	// add peers from database to device
 	for _, pdb := range peers.peers {
 		log.Printf("%s from database will be created on %s", pdb.Name, device.Name)
-		decodedPublicKey, err := base64.StdEncoding.DecodeString(pdb.PrivateKey)
+		decodedPrivateKey, err := base64.StdEncoding.DecodeString(pdb.PrivateKey)
 		if err != nil {
 			panic(err)
 		}
-		pk, err := wgtypes.NewKey([]byte(decodedPublicKey))
+		privateKey, err := wgtypes.NewKey([]byte(decodedPrivateKey))
 		if err != nil {
 			panic(err)
 		}
@@ -248,17 +255,41 @@ func init() {
 			if err != nil {
 				panic(err)
 			}
-			missingPeersOnDevice = append(missingPeersOnDevice, wgtypes.PeerConfig{
-				PublicKey:    pk.PublicKey(),
-				AllowedIPs:   []net.IPNet{*ipNet},
-				PresharedKey: &presharedKey,
-			})
+
+			// check if peer from database is missing on device
+			if i := slices.IndexFunc(device.Peers, func(p wgtypes.Peer) bool { return p.PublicKey.String() == pdb.PublicKey }); i == -1 {
+				missingPeersOnDevice = append(missingPeersOnDevice, wgtypes.PeerConfig{
+					PublicKey:    privateKey.PublicKey(),
+					AllowedIPs:   []net.IPNet{*ipNet},
+					PresharedKey: &presharedKey,
+				})
+			} else {
+				missingPeersOnDevice = append(missingPeersOnDevice, wgtypes.PeerConfig{
+					PublicKey:         privateKey.PublicKey(),
+					AllowedIPs:        []net.IPNet{*ipNet},
+					PresharedKey:      &presharedKey,
+					ReplaceAllowedIPs: true,
+					UpdateOnly:        true,
+				})
+			}
 		} else {
-			missingPeersOnDevice = append(missingPeersOnDevice, wgtypes.PeerConfig{
-				PublicKey:    pk.PublicKey(),
-				AllowedIPs:   []net.IPNet{*ipNet},
-				PresharedKey: &wgtypes.Key{},
-			})
+			// check if peer from database is missing on device
+			if i := slices.IndexFunc(device.Peers, func(p wgtypes.Peer) bool { return p.PublicKey.String() == pdb.PublicKey }); i == -1 {
+				missingPeersOnDevice = append(missingPeersOnDevice, wgtypes.PeerConfig{
+					PublicKey:    privateKey.PublicKey(),
+					AllowedIPs:   []net.IPNet{*ipNet},
+					PresharedKey: &wgtypes.Key{},
+				})
+			} else {
+				missingPeersOnDevice = append(missingPeersOnDevice, wgtypes.PeerConfig{
+					PublicKey:         privateKey.PublicKey(),
+					AllowedIPs:        []net.IPNet{*ipNet},
+					PresharedKey:      &wgtypes.Key{},
+					ReplaceAllowedIPs: true,
+					UpdateOnly:        true,
+				})
+
+			}
 		}
 
 		// check if this server has server specific entry on database
@@ -275,7 +306,7 @@ func init() {
 		}
 	}
 
-	// write updates to database
+	// write ssi updates to database
 	if len(updates) > 0 {
 		if _, err := collection.BulkWrite(context.TODO(), updates, &options.BulkWriteOptions{}); err != nil {
 			logger.Error(err.Error())
@@ -284,7 +315,38 @@ func init() {
 	}
 
 	// create missing peers
-	err = wgc.ConfigureDevice(device.Name, wgtypes.Config{Peers: missingPeersOnDevice, ReplacePeers: true})
+	err = wgc.ConfigureDevice(device.Name, wgtypes.Config{Peers: missingPeersOnDevice})
+	if err != nil {
+		logger.Error(err.Error())
+		panic(err)
+	}
+
+	// update device
+	device, err = wgc.Device(config.InterfaceName)
+	if err != nil {
+		logger.Error(err.Error())
+		panic(err)
+	}
+
+	// store peers that should be removed from device
+	var peersToDeleteFromDevice []wgtypes.PeerConfig
+
+	// check to see if there are any peers that should be removed from device
+	for _, pd := range device.Peers {
+		if _, ok := peers.peers[pd.PublicKey.String()]; !ok {
+			peersToDeleteFromDevice = append(peersToDeleteFromDevice, wgtypes.PeerConfig{
+				PublicKey: pd.PublicKey,
+				Remove:    true,
+			})
+		}
+
+		// set each peer's temp tx and rx values for correct usage calculation
+		peers.peers[pd.PublicKey.String()].TempTX = pd.TransmitBytes
+		peers.peers[pd.PublicKey.String()].TempRX = pd.ReceiveBytes
+	}
+
+	// remove peers
+	err = wgc.ConfigureDevice(device.Name, wgtypes.Config{Peers: peersToDeleteFromDevice})
 	if err != nil {
 		logger.Error(err.Error())
 		panic(err)
