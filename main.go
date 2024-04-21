@@ -517,6 +517,7 @@ func main() {
 				_, err := collection.BulkWrite(context.TODO(), updates, &options.BulkWriteOptions{})
 				if err != nil {
 					logger.Error(err.Error())
+					panic(err)
 				}
 			}
 
