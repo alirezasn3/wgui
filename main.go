@@ -236,7 +236,6 @@ func init() {
 
 	// add peers from database to device
 	for _, pdb := range peers.peers {
-		log.Printf("%s from database will be created on %s", pdb.Name, device.Name)
 		decodedPrivateKey, err := base64.StdEncoding.DecodeString(pdb.PrivateKey)
 		if err != nil {
 			panic(err)
@@ -258,6 +257,7 @@ func init() {
 
 			// check if peer from database is missing on device
 			if i := slices.IndexFunc(device.Peers, func(p wgtypes.Peer) bool { return p.PublicKey.String() == pdb.PublicKey }); i == -1 {
+				log.Printf("%s from database will be created on %s", pdb.Name, device.Name)
 				missingPeersOnDevice = append(missingPeersOnDevice, wgtypes.PeerConfig{
 					PublicKey:    privateKey.PublicKey(),
 					AllowedIPs:   []net.IPNet{*ipNet},
@@ -275,6 +275,7 @@ func init() {
 		} else {
 			// check if peer from database is missing on device
 			if i := slices.IndexFunc(device.Peers, func(p wgtypes.Peer) bool { return p.PublicKey.String() == pdb.PublicKey }); i == -1 {
+				log.Printf("%s from database will be created on %s", pdb.Name, device.Name)
 				missingPeersOnDevice = append(missingPeersOnDevice, wgtypes.PeerConfig{
 					PublicKey:    privateKey.PublicKey(),
 					AllowedIPs:   []net.IPNet{*ipNet},
@@ -334,6 +335,7 @@ func init() {
 	// check to see if there are any peers that should be removed from device
 	for _, pd := range device.Peers {
 		if _, ok := peers.peers[pd.PublicKey.String()]; !ok {
+			log.Printf("%s will be removed from %s because it does not exist on database", pd.PublicKey.String(), device.Name)
 			peersToDeleteFromDevice = append(peersToDeleteFromDevice, wgtypes.PeerConfig{
 				PublicKey: pd.PublicKey,
 				Remove:    true,
