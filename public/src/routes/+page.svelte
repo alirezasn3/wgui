@@ -428,6 +428,16 @@
 		{#if currentPeer.preferredEndpoint}
 			<div class="mb-2">{currentPeer.preferredEndpoint}</div>
 		{/if}
+		<select
+			disabled={role === 'user'}
+			bind:value={selectedEndpoint}
+			on:change={() => qr.toCanvas(document.getElementById('canvas'), config)}
+			class="mb-4 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 outline-none"
+		>
+			{#each endpoints as e}
+				<option value={e}>{e}</option>
+			{/each}
+		</select>
 		{#if role !== 'user'}
 			<div class="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 				{#each currentPeer.serverSpecificInfo as ssi}
@@ -465,16 +475,6 @@
 			</div>
 		{/if}
 		<canvas id="canvas" class="mb-4 rounded"></canvas>
-		<select
-			disabled={role === 'user'}
-			bind:value={selectedEndpoint}
-			on:change={() => qr.toCanvas(document.getElementById('canvas'), config)}
-			class="mb-4 rounded border border-neutral-800 bg-neutral-900 px-2 py-1 outline-none"
-		>
-			{#each endpoints as e}
-				<option value={e}>{e}</option>
-			{/each}
-		</select>
 		{#if role !== 'user'}
 			<div class="relative rounded bg-neutral-800 p-4 shadow-inner">
 				<!-- svelte-ignore a11y-click-events-have-key-events -->

@@ -73,7 +73,7 @@
 				placeholder="Name"
 			/>
 		</div>
-		<div class="mb-2 w-full">
+		<div class="mb-2 w-full hidden">
 			<input
 				disabled={true}
 				bind:value={preferredEndpoint}

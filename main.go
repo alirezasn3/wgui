@@ -724,6 +724,7 @@ func main() {
 					}
 				}
 			}
+			ctx, _ = context.WithTimeout(context.Background(), time.Second*10)
 		}
 
 		logger.Error(ctx.Err().Error())
