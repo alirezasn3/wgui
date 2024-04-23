@@ -105,6 +105,16 @@ func init() {
 		panic(err)
 	}
 
+	// create ttl index for logs
+	indexModel := mongo.IndexModel{
+		Keys:    bson.D{{"expireAt", 1}},
+		Options: options.Index().SetExpireAfterSeconds(0),
+	}
+	_, err = mongoClient.Database(config.DBName).Collection("logs").Indexes().CreateOne(context.TODO(), indexModel)
+	if err != nil {
+		panic(err)
+	}
+
 	// setup logger
 	ioWriter = CustomWriter{W: os.Stdout, Collection: mongoClient.Database(config.DBName).Collection("logs")}
 	logger = slog.New(slog.NewJSONHandler(ioWriter, &slog.HandlerOptions{AddSource: true, ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
