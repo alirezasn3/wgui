@@ -45,6 +45,7 @@ var collection *mongo.Collection // peers collection on database
 var ioWriter CustomWriter        // io writer that writes to database and stdout
 var logger *slog.Logger          // custom logger that writes logs to database and stdout
 var deviceCIDR *net.IPNet        // used to check if client is in device subnet
+var mongoClient *mongo.Client
 
 func init() {
 	// init local map
@@ -83,7 +84,7 @@ func init() {
 	}
 
 	// connect to database
-	mongoClient, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(config.MongoURI).SetServerAPIOptions(options.ServerAPI(options.ServerAPIVersion1)))
+	mongoClient, err = mongo.Connect(context.TODO(), options.Client().ApplyURI(config.MongoURI).SetServerAPIOptions(options.ServerAPI(options.ServerAPIVersion1)))
 	if err != nil {
 		panic(err)
 	}
@@ -221,8 +222,8 @@ func init() {
 		logger.Info("Saved config to "+os.Args[1]+"Admin-0.conf", slog.String("peer", "Admin-0"))
 	}
 
-	// store peers that are missing from device
-	var missingPeersOnDevice []wgtypes.PeerConfig
+	// store new peer configurations
+	var newPeerConfigurations []wgtypes.PeerConfig
 
 	// update device
 	device, err = wgc.Device(config.InterfaceName)
@@ -258,36 +259,32 @@ func init() {
 			// check if peer from database is missing on device
 			if i := slices.IndexFunc(device.Peers, func(p wgtypes.Peer) bool { return p.PublicKey.String() == pdb.PublicKey }); i == -1 {
 				log.Printf("%s from database will be created on %s", pdb.Name, device.Name)
-				missingPeersOnDevice = append(missingPeersOnDevice, wgtypes.PeerConfig{
+				newPeerConfigurations = append(newPeerConfigurations, wgtypes.PeerConfig{
 					PublicKey:    privateKey.PublicKey(),
 					AllowedIPs:   []net.IPNet{*ipNet},
 					PresharedKey: &presharedKey,
 				})
 			} else {
-				missingPeersOnDevice = append(missingPeersOnDevice, wgtypes.PeerConfig{
-					PublicKey:         privateKey.PublicKey(),
-					AllowedIPs:        []net.IPNet{*ipNet},
-					PresharedKey:      &presharedKey,
-					ReplaceAllowedIPs: true,
-					UpdateOnly:        true,
+				newPeerConfigurations = append(newPeerConfigurations, wgtypes.PeerConfig{
+					PublicKey:    privateKey.PublicKey(),
+					PresharedKey: &presharedKey,
+					UpdateOnly:   true,
 				})
 			}
 		} else {
 			// check if peer from database is missing on device
 			if i := slices.IndexFunc(device.Peers, func(p wgtypes.Peer) bool { return p.PublicKey.String() == pdb.PublicKey }); i == -1 {
 				log.Printf("%s from database will be created on %s", pdb.Name, device.Name)
-				missingPeersOnDevice = append(missingPeersOnDevice, wgtypes.PeerConfig{
+				newPeerConfigurations = append(newPeerConfigurations, wgtypes.PeerConfig{
 					PublicKey:    privateKey.PublicKey(),
 					AllowedIPs:   []net.IPNet{*ipNet},
 					PresharedKey: &wgtypes.Key{},
 				})
 			} else {
-				missingPeersOnDevice = append(missingPeersOnDevice, wgtypes.PeerConfig{
-					PublicKey:         privateKey.PublicKey(),
-					AllowedIPs:        []net.IPNet{*ipNet},
-					PresharedKey:      &wgtypes.Key{},
-					ReplaceAllowedIPs: true,
-					UpdateOnly:        true,
+				newPeerConfigurations = append(newPeerConfigurations, wgtypes.PeerConfig{
+					PublicKey:    privateKey.PublicKey(),
+					PresharedKey: &wgtypes.Key{},
+					UpdateOnly:   true,
 				})
 
 			}
@@ -300,7 +297,6 @@ func init() {
 			update := mongo.NewUpdateOneModel()
 			update.SetFilter(bson.M{"_id": pdb.ID})
 			update.SetUpdate(bson.M{
-
 				"$push": bson.M{"serverSpecificInfo": ServerSpecificInfo{Address: config.PublicAddress}},
 			})
 			updates = append(updates, update)
@@ -316,7 +312,7 @@ func init() {
 	}
 
 	// create missing peers
-	err = wgc.ConfigureDevice(device.Name, wgtypes.Config{Peers: missingPeersOnDevice})
+	err = wgc.ConfigureDevice(device.Name, wgtypes.Config{Peers: newPeerConfigurations})
 	if err != nil {
 		logger.Error(err.Error())
 		panic(err)
@@ -555,7 +551,7 @@ func main() {
 			}
 			if e = changeStream.Decode(&data); e != nil {
 				logger.Error(e.Error())
-				continue
+				panic(e)
 			}
 
 			// check if peer exists
@@ -575,7 +571,7 @@ func main() {
 			e = wgc.ConfigureDevice(config.InterfaceName, wgtypes.Config{Peers: []wgtypes.PeerConfig{{PublicKey: publicKey, Remove: true}}})
 			if e != nil {
 				logger.Error(e.Error(), slog.String("peer", p.Name))
-				continue
+				panic(e)
 			}
 
 			// delete peer from local map
@@ -608,7 +604,7 @@ func main() {
 			}
 			if e = changeStream.Decode(&data); e != nil {
 				logger.Error(e.Error())
-				continue
+				panic(e)
 			}
 
 			// check if peer already exists
@@ -635,7 +631,7 @@ func main() {
 			e = wgc.ConfigureDevice(config.InterfaceName, wgtypes.Config{Peers: []wgtypes.PeerConfig{{PublicKey: publicKey, AllowedIPs: []net.IPNet{*allowedIPs}}}})
 			if e != nil {
 				logger.Error(e.Error(), slog.String("peer", data.FullDocument.Name))
-				continue
+				panic(e)
 			}
 
 			// add peer to local map
@@ -649,7 +645,7 @@ func main() {
 			_, e = collection.UpdateByID(context.TODO(), data.FullDocument.ID, bson.M{"$push": bson.M{"serverSpecificInfo": ServerSpecificInfo{Address: config.PublicAddress}}})
 			if e != nil {
 				logger.Error(e.Error(), slog.String("peer", data.FullDocument.Name))
-				continue
+				panic(e)
 			}
 		}
 	}()
@@ -682,7 +678,7 @@ func main() {
 			// parse update
 			if e = changeStream.Decode(&data); e != nil {
 				logger.Error(e.Error())
-				continue
+				panic(e)
 			}
 
 			p, ok = peers.peers[data.DocumentKey.ID]
@@ -732,7 +728,7 @@ func main() {
 						e = wgc.ConfigureDevice(config.InterfaceName, wgtypes.Config{Peers: []wgtypes.PeerConfig{{PublicKey: pk, Endpoint: nil, UpdateOnly: true}}})
 						if e != nil {
 							logger.Error(e.Error(), slog.String("peer", p.Name))
-							continue
+							panic(e)
 						}
 					} else {
 						udpAddress, e := net.ResolveUDPAddr("udp4", v.(string))
@@ -743,7 +739,7 @@ func main() {
 						e = wgc.ConfigureDevice(config.InterfaceName, wgtypes.Config{Peers: []wgtypes.PeerConfig{{PublicKey: pk, Endpoint: udpAddress, UpdateOnly: true}}})
 						if e != nil {
 							logger.Error(e.Error(), slog.String("peer", p.Name))
-							continue
+							panic(e)
 						}
 					}
 					peers.mu.Lock()
@@ -774,6 +770,42 @@ func main() {
 					}
 				}
 			}
+		}
+	}()
+
+	// check for conflicts every minute
+	go func() {
+		for {
+			var tempPeers []*Peer
+			cursor, err := collection.Find(context.TODO(), bson.D{})
+			if err != nil {
+				logger.Error(err.Error())
+				panic(err)
+			}
+			if err = cursor.All(context.TODO(), &tempPeers); err != nil {
+				logger.Error(err.Error())
+				panic(err)
+			}
+			peers.mu.Lock()
+			if len(tempPeers) != len(peers.peers) {
+				logger.Error("conflict detected: %d peers on database and %d peers on device")
+				panic("conflict detected: %d peers on database and %d peers on device")
+			}
+			peers.mu.Unlock()
+			time.Sleep(time.Minute)
+		}
+	}()
+
+	// ping database every 10 seconds
+	go func() {
+		var err error
+		for {
+			err = mongoClient.Ping(context.TODO(), nil)
+			if err != nil {
+				logger.Error(err.Error())
+				panic(err)
+			}
+			time.Sleep(time.Second)
 		}
 	}()
 
