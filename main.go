@@ -606,7 +606,6 @@ func main() {
 
 	// listen for update events from database
 	go func() {
-	start:
 		changeStream, e := collection.Watch(context.TODO(), mongo.Pipeline{bson.D{{Key: "$match", Value: bson.D{{Key: "operationType", Value: "update"}}}}})
 		if e != nil {
 			logger.Error(e.Error())
@@ -625,9 +624,8 @@ func main() {
 		var ssi *ServerSpecificInfo
 		var p *Peer
 		var m map[string]interface{}
-		ctx, _ := context.WithTimeout(context.Background(), time.Minute)
 
-		for changeStream.Next(ctx) {
+		for changeStream.Next(context.Background()) {
 			data = nil
 
 			// parse update
@@ -725,12 +723,7 @@ func main() {
 					}
 				}
 			}
-			ctx, _ = context.WithTimeout(context.Background(), time.Minute)
 		}
-		if ctx.Err() != nil {
-			logger.Error(ctx.Err().Error())
-		}
-		goto start
 	}()
 
 	// create echo instance
