@@ -726,8 +726,9 @@ func main() {
 			}
 			ctx, _ = context.WithTimeout(context.Background(), time.Minute)
 		}
-
-		logger.Error(ctx.Err().Error())
+		if ctx.Err() != nil {
+			logger.Error(ctx.Err().Error())
+		}
 		panic(ctx.Err())
 	}()
 
