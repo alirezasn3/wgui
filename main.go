@@ -606,6 +606,7 @@ func main() {
 
 	// listen for update events from database
 	go func() {
+	start:
 		changeStream, e := collection.Watch(context.TODO(), mongo.Pipeline{bson.D{{Key: "$match", Value: bson.D{{Key: "operationType", Value: "update"}}}}})
 		if e != nil {
 			logger.Error(e.Error())
@@ -729,7 +730,7 @@ func main() {
 		if ctx.Err() != nil {
 			logger.Error(ctx.Err().Error())
 		}
-		panic(ctx.Err())
+		goto start
 	}()
 
 	// create echo instance
