@@ -624,7 +624,7 @@ func main() {
 		var ssi *ServerSpecificInfo
 		var p *Peer
 		var m map[string]interface{}
-		ctx, _ := context.WithTimeout(context.Background(), time.Second*10)
+		ctx, _ := context.WithTimeout(context.Background(), time.Minute)
 
 		for changeStream.Next(ctx) {
 			data = nil
@@ -724,7 +724,7 @@ func main() {
 					}
 				}
 			}
-			ctx, _ = context.WithTimeout(context.Background(), time.Second*10)
+			ctx, _ = context.WithTimeout(context.Background(), time.Minute)
 		}
 
 		logger.Error(ctx.Err().Error())
