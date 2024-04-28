@@ -770,5 +770,5 @@ func main() {
 	e.GET("/api/me", GetMe)
 	e.GET("/api/logs", GetLogs)
 
-	e.Logger.Fatal(e.StartTLS("0.0.0.0:443", filepath.Join(path+"certs", "server.pem"), filepath.Join(path+"certs", "server.key")))
+	e.Logger.Fatal(e.StartTLS("0.0.0.0:443", filepath.Join(path, "certs", "server.pem"), filepath.Join(path, "certs", "server.key")))
 }
