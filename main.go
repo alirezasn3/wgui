@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -57,7 +58,11 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	log.Println(path)
+	if strings.Contains(path, "/") {
+		path += `/`
+	} else {
+		path += `\`
+	}
 
 	// load config file
 	bytes, err := os.ReadFile(path + "config.json")
