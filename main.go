@@ -9,8 +9,8 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"path/filepath"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -53,19 +53,14 @@ func init() {
 	// init local map
 	peers.peers = make(map[string]*Peer)
 
-	var err error
-	path, err = os.Getwd()
+	execPath, err := os.Executable()
 	if err != nil {
 		panic(err)
 	}
-	if strings.Contains(path, "/") {
-		path += `/`
-	} else {
-		path += `\`
-	}
+	path = filepath.Dir(execPath)
 
 	// load config file
-	bytes, err := os.ReadFile(path + "config.json")
+	bytes, err := os.ReadFile(filepath.Join(path, "config.json"))
 	if err != nil {
 		panic(err)
 	}
@@ -73,7 +68,7 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	log.Println("Loaded config from " + path + "config.json")
+	log.Println("Loaded config from " + filepath.Join(path, "config.json"))
 
 	// check for arguments
 	if slices.Contains(os.Args, "reset-ssis") {
@@ -253,12 +248,12 @@ func init() {
 		tempPeers = append(tempPeers, data)
 
 		// save config file
-		err = os.WriteFile(path+"Admin-0.conf", []byte(fmt.Sprintf("[Interface]\nPrivateKey=%s\nAddress=%s\nDNS=1.1.1.1,8.8.8.8\n[Peer]\nPublicKey=%s\nAllowedIPs=0.0.0.0/0\nEndpoint=%s:%d\n", data.PrivateKey, data.AllowedIPs, device.PublicKey.String(), config.PublicAddress, device.ListenPort)), 0666)
+		err = os.WriteFile(filepath.Join(path, "Admin-0.conf"), []byte(fmt.Sprintf("[Interface]\nPrivateKey=%s\nAddress=%s\nDNS=1.1.1.1,8.8.8.8\n[Peer]\nPublicKey=%s\nAllowedIPs=0.0.0.0/0\nEndpoint=%s:%d\n", data.PrivateKey, data.AllowedIPs, device.PublicKey.String(), config.PublicAddress, device.ListenPort)), 0666)
 		if err != nil {
 			logger.Error(err.Error(), slog.String("peer", data.Name))
 			panic(err)
 		}
-		logger.Info("Saved config to "+path+"Admin-0.conf", slog.String("peer", "Admin-0"))
+		logger.Info("Saved config to "+filepath.Join(path, "Admin-0.conf"), slog.String("peer", "Admin-0"))
 	}
 
 	// store new peer configurations
@@ -759,7 +754,7 @@ func main() {
 	e := echo.New()
 
 	// handle static files
-	e.Static("/", path+"public/build")
+	e.Static("/", filepath.Join(path, "public/build"))
 
 	// check if request is from a peer
 	e.Use(Auth)
@@ -775,5 +770,5 @@ func main() {
 	e.GET("/api/me", GetMe)
 	e.GET("/api/logs", GetLogs)
 
-	e.Logger.Fatal(e.StartTLS("0.0.0.0:443", path+"certs/server.pem", path+"certs/server.key"))
+	e.Logger.Fatal(e.StartTLS("0.0.0.0:443", filepath.Join(path+"certs/server.pem"), filepath.Join(path+"certs/server.key")))
 }
