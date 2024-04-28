@@ -59,9 +59,15 @@ func init() {
 		panic(err)
 	}
 
+	log.Println(path)
+
 	pathParts := strings.Split(path, `\`)
 
+	log.Println(pathParts)
+
 	path = strings.Join(pathParts[:len(pathParts)-1], `\`) + `\`
+
+	log.Println(path)
 
 	// load config file
 	bytes, err := os.ReadFile(path + "config.json")
