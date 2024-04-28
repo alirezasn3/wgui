@@ -10,7 +10,6 @@ import (
 	"net"
 	"os"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -54,19 +53,10 @@ func init() {
 	peers.peers = make(map[string]*Peer)
 
 	var err error
-	path, err = os.Executable()
+	path, err = os.Getwd()
 	if err != nil {
 		panic(err)
 	}
-
-	log.Println(path)
-
-	pathParts := strings.Split(path, `\`)
-
-	log.Println(pathParts)
-
-	path = strings.Join(pathParts[:len(pathParts)-1], `\`) + `\`
-
 	log.Println(path)
 
 	// load config file
