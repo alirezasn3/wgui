@@ -9,7 +9,9 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -46,17 +48,29 @@ var ioWriter CustomWriter        // io writer that writes to database and stdout
 var logger *slog.Logger          // custom logger that writes logs to database and stdout
 var deviceCIDR *net.IPNet        // used to check if client is in device subnet
 var mongoClient *mongo.Client
+var path string
 
 func init() {
 	// init local map
 	peers.peers = make(map[string]*Peer)
 
-	// load config file
-	configPath := "config.json"
-	if len(os.Args) > 1 {
-		configPath = os.Args[1] + configPath
+	var err error
+	path, err = os.Executable()
+	if err != nil {
+		panic(err)
 	}
-	bytes, err := os.ReadFile(configPath)
+
+	path, err = (filepath.EvalSymlinks(path))
+	if err != nil {
+		panic(err)
+	}
+
+	pathParts := strings.Split(path, `\`)
+
+	path = strings.Join(pathParts[:len(pathParts)-1], `\`) + `\`
+
+	// load config file
+	bytes, err := os.ReadFile(path + "config.json")
 	if err != nil {
 		panic(err)
 	}
@@ -64,7 +78,27 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-	log.Println("Loaded config from " + configPath)
+	log.Println("Loaded config from " + path + "config.json")
+
+	// check for arguments
+	if slices.Contains(os.Args, "reset-ssis") {
+		// connect to database
+		mongoClient, err = mongo.Connect(context.TODO(), options.Client().ApplyURI(config.MongoURI).SetServerAPIOptions(options.ServerAPI(options.ServerAPIVersion1)))
+		if err != nil {
+			panic(err)
+		}
+		log.Println("Connected to database")
+
+		// load mongodb peers collectoin
+		collection = mongoClient.Database(config.DBName).Collection(config.CollectionName)
+
+		_, err = collection.UpdateMany(context.Background(), bson.M{}, bson.M{"$set": bson.M{"serverSpecificInfo": []ServerSpecificInfo{}}})
+		if err != nil {
+			panic(err)
+		}
+		log.Println("Server specific info entries reset")
+		os.Exit(0)
+	}
 
 	_, deviceCIDR, err = net.ParseCIDR(config.InterfaceAddressCIDR)
 	if err != nil {
@@ -224,12 +258,12 @@ func init() {
 		tempPeers = append(tempPeers, data)
 
 		// save config file
-		err = os.WriteFile(os.Args[1]+"Admin-0.conf", []byte(fmt.Sprintf("[Interface]\nPrivateKey=%s\nAddress=%s\nDNS=1.1.1.1,8.8.8.8\n[Peer]\nPublicKey=%s\nAllowedIPs=0.0.0.0/0\nEndpoint=%s:%d\n", data.PrivateKey, data.AllowedIPs, device.PublicKey.String(), config.PublicAddress, device.ListenPort)), 0666)
+		err = os.WriteFile(path+"Admin-0.conf", []byte(fmt.Sprintf("[Interface]\nPrivateKey=%s\nAddress=%s\nDNS=1.1.1.1,8.8.8.8\n[Peer]\nPublicKey=%s\nAllowedIPs=0.0.0.0/0\nEndpoint=%s:%d\n", data.PrivateKey, data.AllowedIPs, device.PublicKey.String(), config.PublicAddress, device.ListenPort)), 0666)
 		if err != nil {
 			logger.Error(err.Error(), slog.String("peer", data.Name))
 			panic(err)
 		}
-		logger.Info("Saved config to "+os.Args[1]+"Admin-0.conf", slog.String("peer", "Admin-0"))
+		logger.Info("Saved config to "+path+"Admin-0.conf", slog.String("peer", "Admin-0"))
 	}
 
 	// store new peer configurations
@@ -730,7 +764,7 @@ func main() {
 	e := echo.New()
 
 	// handle static files
-	e.Static("/", os.Args[1]+"public/build")
+	e.Static("/", path+"public/build")
 
 	// check if request is from a peer
 	e.Use(Auth)
@@ -746,9 +780,5 @@ func main() {
 	e.GET("/api/me", GetMe)
 	e.GET("/api/logs", GetLogs)
 
-	if len(os.Args) > 1 {
-		e.Logger.Fatal(e.StartTLS("0.0.0.0:443", os.Args[1]+"certs/server.pem", os.Args[1]+"certs/server.key"))
-	} else {
-		e.Logger.Fatal(e.StartTLS("0.0.0.0:443", "", ""))
-	}
+	e.Logger.Fatal(e.StartTLS("0.0.0.0:443", path+"certs/server.pem", path+"certs/server.key"))
 }
