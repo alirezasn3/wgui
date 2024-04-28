@@ -754,7 +754,7 @@ func main() {
 	e := echo.New()
 
 	// handle static files
-	e.Static("/", filepath.Join(path, "public/build"))
+	e.Static("/", filepath.Join(path, "public", "build"))
 
 	// check if request is from a peer
 	e.Use(Auth)
@@ -770,5 +770,5 @@ func main() {
 	e.GET("/api/me", GetMe)
 	e.GET("/api/logs", GetLogs)
 
-	e.Logger.Fatal(e.StartTLS("0.0.0.0:443", filepath.Join(path+"certs/server.pem"), filepath.Join(path+"certs/server.key")))
+	e.Logger.Fatal(e.StartTLS("0.0.0.0:443", filepath.Join(path+"certs", "server.pem"), filepath.Join(path+"certs", "server.key")))
 }
