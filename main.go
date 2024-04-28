@@ -60,10 +60,11 @@ func init() {
 		panic(err)
 	}
 
-	path, err = (filepath.EvalSymlinks(path))
+	newPath, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		panic(err)
 	}
+	path = newPath
 
 	pathParts := strings.Split(path, `\`)
 
