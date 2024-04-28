@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -59,12 +58,6 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
-
-	newPath, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		panic(err)
-	}
-	path = newPath
 
 	pathParts := strings.Split(path, `\`)
 
