@@ -547,9 +547,11 @@
 						}
 						qr.toCanvas(document.getElementById('canvas'), config)
 					}}
-					class="{peer.disabled
-						? 'bg-red-800 hover:bg-red-900'
-						: 'bg-neutral-900 hover:bg-neutral-800'} border-neutral-800 text-left odd:border-y hover:cursor-pointer"
+					class="{peer.disabled && peer.totalRX + peer.totalTX >= peer.allowedUsage
+						? 'bg-yellow-700 hover:bg-yellow-800'
+						: peer.disabled
+							? 'bg-red-800 hover:bg-red-900'
+							: 'bg-neutral-900 hover:bg-neutral-800'} border-neutral-800 text-left odd:border-y hover:cursor-pointer"
 				>
 					<td class="px-2 py-1">{i + 1}</td>
 					<td class="whitespace-nowrap px-2 py-1">{peer.name}</td>
