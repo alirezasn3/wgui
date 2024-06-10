@@ -228,25 +228,22 @@
 {#if role !== 'user'}
 	<div class="justify between mb-2 flex items-center">
 		<input
-			class="mr-2 w-full rounded border border-neutral-800 bg-neutral-950 px-2 py-1 text-lg font-bold outline-none"
+			class="mr-2 w-full rounded border border-neutral-800 bg-neutral-950 px-2 py-1 text-lg outline-none"
 			bind:value={search}
-			placeholder="Seach Peers"
+			placeholder="Search Peers"
 			type="text"
 			autocomplete="off"
 		/>
 		<a
-			class="flex w-fit items-center justify-center rounded border border-neutral-800 px-2 py-[6px]"
+			class="ml-2 flex items-center justify-center rounded-full border border-neutral-800 p-2 hover:cursor-pointer hover:bg-neutral-950"
 			href="/create-peer"><span class="material-symbols-outlined"> add </span></a
 		>
-	</div>
-{/if}
-
-{#if role === 'admin'}
-	<div class="justify between mb-2 flex items-center">
-		<a
-			class="mr-2 flex items-center justify-center rounded-full border border-neutral-800 p-2 hover:cursor-pointer hover:bg-neutral-950"
-			href="/logs"><span class="material-symbols-outlined"> feed </span></a
-		>
+		{#if role === 'admin'}
+			<a
+				class="ml-2 flex items-center justify-center rounded-full border border-neutral-800 p-2 hover:cursor-pointer hover:bg-neutral-950"
+				href="/logs"><span class="material-symbols-outlined"> feed </span></a
+			>
+		{/if}
 	</div>
 {/if}
 
@@ -523,44 +520,46 @@
 		{/if}
 	</div>
 {:else}
-	<table class="w-full overflow-x-auto text-xs md:text-base">
-		<thead class="bg-neutral-900 text-left">
-			<th class="px-2 px-2 py-2">#</th>
-			<th class="px-2 py-2">Name</th>
-			<th class="px-2 py-2">Expiry</th>
-			<th class="px-2 py-2">Usage</th>
-		</thead>
-		<tbody>
-			{#each peers.filter((p) => !search || p.name
-						.toLowerCase()
-						.includes(search.toLowerCase()) || p.allowedIPs.includes(search)) as peer, i}
-				<tr
-					on:click={async () => {
-						currentPeer = peer
-						newName = peer.name
-						newAllowedUsage = peer.allowedUsage / 1024000000
-						newExpiresAt = +((peer.expiresAt - Date.now()) / 1000 / 3600 / 24).toFixed(2)
-						newPreferredEndpoint = peer.preferredEndpoint
-						newRole = peer.role
-						while (!document.getElementById('canvas')) {
-							await sleep(100)
-						}
-						qr.toCanvas(document.getElementById('canvas'), config)
-					}}
-					class="{peer.disabled && peer.totalRX + peer.totalTX >= peer.allowedUsage
-						? 'bg-yellow-700 hover:bg-yellow-800'
-						: peer.disabled
-							? 'bg-red-800 hover:bg-red-900'
-							: 'bg-neutral-900 hover:bg-neutral-800'} border-neutral-800 text-left odd:border-y hover:cursor-pointer"
-				>
-					<td class="px-2 py-1">{i + 1}</td>
-					<td class="whitespace-nowrap px-2 py-1">{peer.name}</td>
-					<td class="whitespace-nowrap px-2 py-1">{formatExpiry(peer.expiresAt)}</td>
-					<td class="whitespace-nowrap px-2 py-1"
-						>{formatBytes(peer.totalTX + peer.totalRX)}/{formatBytes(peer.allowedUsage)}</td
+	<div class="w-full max-w-full overflow-x-auto bg-neutral-950">
+		<table class="w-full text-xs md:text-base">
+			<thead class="bg-neutral-900 text-left">
+				<th class="px-2 px-2 py-2">#</th>
+				<th class="px-2 py-2">Name</th>
+				<th class="px-2 py-2">Expiry</th>
+				<th class="px-2 py-2">Usage</th>
+			</thead>
+			<tbody>
+				{#each peers.filter((p) => !search || p.name
+							.toLowerCase()
+							.includes(search.toLowerCase()) || p.allowedIPs.includes(search)) as peer, i}
+					<tr
+						on:click={async () => {
+							currentPeer = peer
+							newName = peer.name
+							newAllowedUsage = peer.allowedUsage / 1024000000
+							newExpiresAt = +((peer.expiresAt - Date.now()) / 1000 / 3600 / 24).toFixed(2)
+							newPreferredEndpoint = peer.preferredEndpoint
+							newRole = peer.role
+							while (!document.getElementById('canvas')) {
+								await sleep(100)
+							}
+							qr.toCanvas(document.getElementById('canvas'), config)
+						}}
+						class="{peer.disabled && peer.totalRX + peer.totalTX >= peer.allowedUsage
+							? 'bg-yellow-700 hover:bg-yellow-800'
+							: peer.disabled
+								? 'bg-red-800 hover:bg-red-900'
+								: 'bg-neutral-900 hover:bg-neutral-800'} border-neutral-800 text-left odd:border-y hover:cursor-pointer"
 					>
-				</tr>
-			{/each}
-		</tbody>
-	</table>
+						<td class="px-2 py-1">{i + 1}</td>
+						<td class="whitespace-nowrap px-2 py-1">{peer.name}</td>
+						<td class="whitespace-nowrap px-2 py-1">{formatExpiry(peer.expiresAt)}</td>
+						<td class="whitespace-nowrap px-2 py-1"
+							>{formatBytes(peer.totalTX + peer.totalRX)}/{formatBytes(peer.allowedUsage)}</td
+						>
+					</tr>
+				{/each}
+			</tbody>
+		</table>
+	</div>
 {/if}

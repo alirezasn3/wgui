@@ -36,18 +36,6 @@
 		<div
 			class="my-1 flex flex-col rounded border border-neutral-800 px-2 py-1 text-sm md:text-base"
 		>
-			<div class="items-center text-neutral-300 max-md:flex max-md:text-xs">
-				<div class="mr-1">
-					{new Date(log.time)
-						.toLocaleTimeString('en-US', {
-							year: 'numeric',
-							month: 'numeric',
-							day: 'numeric'
-						})
-						.replace(' ', '')}
-				</div>
-				<div class="text-neutral-300">{log.publicAddress}</div>
-			</div>
 			<div class="max-md:text-sm">
 				{#if log.peer}
 					<div class="text-neutral-300">{log.peer}</div>
@@ -61,6 +49,19 @@
 				>
 					<div>{log.msg}</div>
 				</div>
+			</div>
+			<div class="items-center text-neutral-300 max-md:flex max-md:text-xs">
+				<div>
+					{new Date(log.time)
+						.toLocaleTimeString('en-US', {
+							year: 'numeric',
+							month: 'numeric',
+							day: 'numeric'
+						})
+						.replace(' ', '')}
+				</div>
+				<div class="mx-1 h-1 w-1 bg-neutral-800"></div>
+				<div class="text-neutral-300">{log.publicAddress}</div>
 			</div>
 		</div>
 	{/each}
