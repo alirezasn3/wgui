@@ -523,7 +523,7 @@
 		{/if}
 	</div>
 {:else}
-	<table class="w-full overflow-x-auto text-sm md:text-base">
+	<table class="w-full overflow-x-auto text-xs md:text-base">
 		<thead class="bg-neutral-900 text-left">
 			<th class="px-2 px-2 py-2">#</th>
 			<th class="px-2 py-2">Name</th>
@@ -533,7 +533,7 @@
 		<tbody>
 			{#each peers.filter((p) => !search || p.name
 						.toLowerCase()
-						.includes(search.toLowerCase())) as peer, i}
+						.includes(search.toLowerCase()) || p.allowedIPs.includes(search)) as peer, i}
 				<tr
 					on:click={async () => {
 						currentPeer = peer
