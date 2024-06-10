@@ -228,7 +228,7 @@
 {#if role !== 'user'}
 	<div class="justify between mb-2 flex items-center">
 		<input
-			class="mr-2 w-full rounded border border-neutral-800 bg-neutral-950 px-2 py-1 text-lg outline-none"
+			class="w-full rounded border border-neutral-800 bg-neutral-950 px-2 py-1 text-lg outline-none"
 			bind:value={search}
 			placeholder="Search Peers"
 			type="text"
@@ -391,22 +391,22 @@
 		{:else}
 			<div class="mb-2 text-lg font-bold">{currentPeer.name}</div>
 			{#if role !== 'user'}
-				<div class="mb-2">{currentPeer.role}</div>
-				<div class="mb-2">{currentPeer.allowedIPs}</div>
+				<div class="mb-2 flex items-center text-sm">
+					<div>{currentPeer.role}</div>
+					<div class="mx-1 h-1 w-1 rounded-full bg-neutral-800"></div>
+					<div>{currentPeer.allowedIPs}</div>
+				</div>
 			{/if}
-			<div class="mb-2 flex">
-				<div class="mr-1">Expiry:</div>
+			<div class="mb-2 flex items-center text-sm">
 				<div>{formatExpiry(currentPeer.expiresAt)}</div>
-			</div>
-			<div class="mb-2 flex">
-				<div class="mr-1">Usage:</div>
+				<div class="mx-1 h-1 w-1 rounded-full bg-neutral-800"></div>
 				<div>
 					{formatBytes(currentPeer.totalTX + currentPeer.totalRX)} / {formatBytes(
 						currentPeer.allowedUsage
 					)}
 				</div>
 			</div>
-			<div class="mb-2 flex">
+			<div class="mb-2 flex text-sm">
 				<div class="flex">
 					<span class="material-symbols-outlined mr-1"> arrow_upward </span>
 					<div>
@@ -436,23 +436,23 @@
 			{/each}
 		</select>
 		{#if role !== 'user'}
-			<div class="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+			<div class="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 				{#each currentPeer.serverSpecificInfo as ssi}
-					<div class="rounded border border-neutral-800 p-4">
-						<div class="mb-2 text-lg font-bold">{ssi.address}</div>
-						<div class="mb-2 flex">
+					<div class="rounded border border-neutral-800 px-2 py-1 text-sm">
+						<div class="mb-1 text-base font-bold">{ssi.address}</div>
+						<div class="mb-1 flex">
 							<div class="mr-1">Endpoint:</div>
 							<div>
 								{!ssi.endpoint || ssi.endpoint === '<nil>' ? 'unknown' : ssi.endpoint}
 							</div>
 						</div>
-						<div class="mb-2 flex">
+						<div class="mb-1 flex">
 							<div class="mr-1">Last Handshake:</div>
 							<div>
 								{ssi.lastHandshakeTime || 'unknown'}
 							</div>
 						</div>
-						<div class="mb-2 flex">
+						<div class="mb-1 flex">
 							<div class="flex">
 								<span class="material-symbols-outlined mr-1"> arrow_upward </span>
 								<div>

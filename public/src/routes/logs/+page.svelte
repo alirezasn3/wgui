@@ -56,7 +56,7 @@
 						})
 						.replace(' ', '')}
 				</div>
-				<div class="mx-1 h-1 w-1 rounded-full bg-neutral-800 md:hidden"></div>
+				<div class="mx-1 h-1 w-1 rounded-full bg-neutral-800"></div>
 				<div class="text-neutral-300">{log.publicAddress}</div>
 			</div>
 		</div>
