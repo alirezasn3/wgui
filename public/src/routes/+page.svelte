@@ -389,25 +389,22 @@
 				>
 			</div>
 		{:else}
-			<div class="flex items-center">
-				<div class="mb-2 text-lg font-bold">{currentPeer.name}</div>
+			<div class="mb-2 flex items-center">
+				<div class="text-lg font-bold">{currentPeer.name}</div>
 				<div class="ml-1">{'('}{currentPeer.role}{')'}</div>
 			</div>
 			{#if role !== 'user'}
-				<div class="mb-2 flex items-center text-sm">
+				<div class="mb-2 flex items-center">
 					<div>{currentPeer.allowedIPs}</div>
 				</div>
 			{/if}
-			<div class="mb-2 flex items-center text-sm">
-				<div>
-					{formatBytes(currentPeer.totalTX + currentPeer.totalRX)} / {formatBytes(
-						currentPeer.allowedUsage
-					)}
-				</div>
-				<div class="mx-1 h-2 w-2 rounded-full bg-neutral-600"></div>
-				<div>{formatExpiry(currentPeer.expiresAt)}</div>
+			<div class="mb-2">{formatExpiry(currentPeer.expiresAt)}</div>
+			<div class="mb-2">
+				{formatBytes(currentPeer.totalTX + currentPeer.totalRX)} / {formatBytes(
+					currentPeer.allowedUsage
+				)}
 			</div>
-			<div class="mb-2 flex text-sm">
+			<div class="mb-2 flex">
 				<div class="mr-2 flex">
 					<span class="material-symbols-outlined mr-1"> arrow_upward </span>
 					<div>
@@ -438,8 +435,8 @@
 		{#if role !== 'user'}
 			<div class="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 				{#each currentPeer.serverSpecificInfo as ssi}
-					<div class="rounded border border-neutral-800 px-2 py-1 text-sm">
-						<div class="text-base font-bold">{ssi.address}</div>
+					<div class="rounded border border-neutral-800 px-2 py-1">
+						<div class="font-bold">{ssi.address}</div>
 						<div class="flex">
 							<div class="mr-1">Endpoint:</div>
 							<div>
