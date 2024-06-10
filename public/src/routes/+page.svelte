@@ -389,31 +389,31 @@
 				>
 			</div>
 		{:else}
-			<div class="mb-2 text-lg font-bold">{currentPeer.name}</div>
+			<div class="flex items-center">
+				<div class="mb-2 text-lg font-bold">{currentPeer.name}</div>
+				<div class="ml-1">{'('}{currentPeer.role}{')'}</div>
+			</div>
 			{#if role !== 'user'}
 				<div class="mb-2 flex items-center text-sm">
-					<div>{currentPeer.role}</div>
-					<div class="mx-1 h-1 w-1 rounded-full bg-neutral-800"></div>
 					<div>{currentPeer.allowedIPs}</div>
 				</div>
 			{/if}
 			<div class="mb-2 flex items-center text-sm">
-				<div>{formatExpiry(currentPeer.expiresAt)}</div>
-				<div class="mx-1 h-1 w-1 rounded-full bg-neutral-800"></div>
 				<div>
 					{formatBytes(currentPeer.totalTX + currentPeer.totalRX)} / {formatBytes(
 						currentPeer.allowedUsage
 					)}
 				</div>
+				<div class="mx-1 h-2 w-2 rounded-full bg-neutral-600"></div>
+				<div>{formatExpiry(currentPeer.expiresAt)}</div>
 			</div>
 			<div class="mb-2 flex text-sm">
-				<div class="flex">
+				<div class="mr-2 flex">
 					<span class="material-symbols-outlined mr-1"> arrow_upward </span>
 					<div>
 						{formatBytes(currentPeer.totalTX)}
 					</div>
 				</div>
-				<div class="mx-2">/</div>
 				<div class="flex">
 					<span class="material-symbols-outlined mr-1"> arrow_downward </span>
 					<div>
@@ -439,27 +439,26 @@
 			<div class="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 				{#each currentPeer.serverSpecificInfo as ssi}
 					<div class="rounded border border-neutral-800 px-2 py-1 text-sm">
-						<div class="mb-1 text-base font-bold">{ssi.address}</div>
-						<div class="mb-1 flex">
+						<div class="text-base font-bold">{ssi.address}</div>
+						<div class="flex">
 							<div class="mr-1">Endpoint:</div>
 							<div>
 								{!ssi.endpoint || ssi.endpoint === '<nil>' ? 'unknown' : ssi.endpoint}
 							</div>
 						</div>
-						<div class="mb-1 flex">
+						<div class="flex">
 							<div class="mr-1">Last Handshake:</div>
 							<div>
 								{ssi.lastHandshakeTime || 'unknown'}
 							</div>
 						</div>
-						<div class="mb-1 flex">
-							<div class="flex">
+						<div class="flex">
+							<div class="mr-2 flex">
 								<span class="material-symbols-outlined mr-1"> arrow_upward </span>
 								<div>
 									{formatBytes(ssi.currentTX)}
 								</div>
 							</div>
-							<div class="mx-1">/</div>
 							<div class="flex">
 								<span class="material-symbols-outlined mr-1"> arrow_downward </span>
 								<div>
