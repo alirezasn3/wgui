@@ -28,29 +28,25 @@
 	})
 </script>
 
-<div>
-	<a href="/" class="mb-4 rounded border border-neutral-800 px-2 py-1.5 text-lg font-bold"
-		>Dashboard</a
-	>
+<a href="/" class="rounded border border-neutral-800 px-2 py-1.5 text-lg font-bold">Dashboard</a>
+<div class="mt-4">
 	{#each logs as log}
 		<div
 			class="my-1 flex flex-col rounded border border-neutral-800 px-2 py-1 text-sm md:text-base"
 		>
-			<div class="max-md:text-sm">
-				{#if log.peer}
-					<div class="text-neutral-300">{log.peer}</div>
-				{/if}
-				<div
-					class="font-bold {log.level === 'ERROR'
-						? 'text-red-500'
-						: log.level === 'WARN'
-							? 'text-yellow-500'
-							: 'text-neutral-50'}"
-				>
-					<div>{log.msg}</div>
-				</div>
+			<div
+				class="font-bold {log.level === 'ERROR'
+					? 'text-red-500'
+					: log.level === 'WARN'
+						? 'text-yellow-500'
+						: 'text-neutral-50'}"
+			>
+				<div>{log.msg}</div>
 			</div>
-			<div class="items-center text-neutral-300 max-md:flex max-md:text-xs">
+			{#if log.peer}
+				<div class="text-sm text-neutral-300">{log.peer}</div>
+			{/if}
+			<div class="flex items-center text-xs text-neutral-300">
 				<div>
 					{new Date(log.time)
 						.toLocaleTimeString('en-US', {
@@ -60,7 +56,7 @@
 						})
 						.replace(' ', '')}
 				</div>
-				<div class="mx-1 h-1 w-1 bg-neutral-800"></div>
+				<div class="mx-1 h-1 w-1 rounded-full bg-neutral-800 md:hidden"></div>
 				<div class="text-neutral-300">{log.publicAddress}</div>
 			</div>
 		</div>

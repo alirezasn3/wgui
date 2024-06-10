@@ -521,7 +521,7 @@
 	</div>
 {:else}
 	<div class="w-full max-w-full overflow-x-auto bg-neutral-950">
-		<table class="w-full text-xs md:text-base">
+		<table class="w-full text-sm md:text-base">
 			<thead class="bg-neutral-900 text-left">
 				<th class="px-2 px-2 py-2">#</th>
 				<th class="px-2 py-2">Name</th>
