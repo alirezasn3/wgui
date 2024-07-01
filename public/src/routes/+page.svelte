@@ -50,8 +50,8 @@
 						for (const peer of peers) {
 							for (const ssi of peer.serverSpecificInfo) {
 								if (servers[ssi.address]) {
-									servers[ssi.address].CurrentRX += ssi.currentRX
-									servers[ssi.address].CurrentTX += ssi.currentTX
+									servers[ssi.address].currentRX += ssi.currentRX
+									servers[ssi.address].currentTX += ssi.currentTX
 								} else
 									servers[ssi.address] = {
 										address: ssi.address,
