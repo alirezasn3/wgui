@@ -26,6 +26,7 @@
 	let error = ''
 	let role = 'user'
 	let config = ''
+	let servers = {}
 
 	;(async () => {
 		let t
@@ -42,6 +43,22 @@
 							(a, b) => a.expiresAt - b.expiresAt
 						)
 						role = data.role
+
+						servers = {}
+
+						for (const peer of peers) {
+							for (const ssi of peer.serverSpecificInfo) {
+								if (servers[ssi.address]) {
+									servers[ssi.address].CurrentRX += ssi.currentRX
+									servers[ssi.address].CurrentTX += ssi.currentTX
+								} else
+									servers[ssi.address] = {
+										address: ssi.address,
+										currentTX: ssi.currentTX,
+										currentRX: ssi.currentRX
+									}
+							}
+						}
 					} else {
 						console.log(res.statusText)
 					}
@@ -245,6 +262,29 @@
 			>
 		{/if}
 	</div>
+	{#if role === 'admin'}
+		<div class="mb-2 grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+			{#each Object.values(servers) as server}
+				<div class="rounded border border-neutral-800 px-2 py-1">
+					<div class="font-bold">{server?.address}</div>
+					<div class="flex">
+						<div class="mr-2 flex">
+							<span class="material-symbols-outlined mr-1"> arrow_upward </span>
+							<div>
+								{formatBytes(server?.currentTX)}
+							</div>
+						</div>
+						<div class="flex">
+							<span class="material-symbols-outlined mr-1"> arrow_downward </span>
+							<div>
+								{formatBytes(server?.currentRX)}
+							</div>
+						</div>
+					</div>
+				</div>
+			{/each}
+		</div>
+	{/if}
 {/if}
 
 {#if currentPeer !== null}
