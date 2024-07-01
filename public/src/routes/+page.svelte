@@ -27,6 +27,7 @@
 	let role = 'user'
 	let config = ''
 	let servers = {}
+	let updateCount = 0
 
 	;(async () => {
 		let t
@@ -44,23 +45,21 @@
 						)
 						role = data.role
 
-						let tempServers = {}
+						servers = {}
 
 						for (const peer of peers) {
 							for (const ssi of peer.serverSpecificInfo) {
-								if (tempServers[ssi.address]) {
-									tempServers[ssi.address].CurrentRX += ssi.currentRX
-									tempServers[ssi.address].CurrentTX += ssi.currentTX
+								if (servers[ssi.address]) {
+									servers[ssi.address].CurrentRX += ssi.currentRX
+									servers[ssi.address].CurrentTX += ssi.currentTX
 								} else
-									tempServers[ssi.address] = {
+									servers[ssi.address] = {
 										address: ssi.address,
 										currentTX: ssi.currentTX,
 										currentRX: ssi.currentRX
 									}
 							}
 						}
-
-						servers = tempServers
 					} else {
 						console.log(res.statusText)
 					}
@@ -74,6 +73,8 @@
 				}
 			} catch (error) {
 				console.log(error)
+			} finally {
+				updateCount++
 			}
 			await sleep(1000 - (Date.now() - t))
 		}
@@ -266,25 +267,27 @@
 	</div>
 	{#if role === 'admin'}
 		<div class="mb-2 grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-			{#each Object.values(servers) as server}
-				<div class="rounded border border-neutral-800 px-2 py-1">
-					<div class="font-bold">{server?.address}</div>
-					<div class="flex">
-						<div class="mr-2 flex">
-							<span class="material-symbols-outlined mr-1"> arrow_upward </span>
-							<div>
-								{formatBytes(server?.currentTX)}
-							</div>
-						</div>
+			{#key updateCount}
+				{#each Object.values(servers) as server}
+					<div class="rounded border border-neutral-800 px-2 py-1">
+						<div class="font-bold">{server?.address}</div>
 						<div class="flex">
-							<span class="material-symbols-outlined mr-1"> arrow_downward </span>
-							<div>
-								{formatBytes(server?.currentRX)}
+							<div class="mr-2 flex">
+								<span class="material-symbols-outlined mr-1"> arrow_upward </span>
+								<div>
+									{formatBytes(server?.currentTX)}
+								</div>
+							</div>
+							<div class="flex">
+								<span class="material-symbols-outlined mr-1"> arrow_downward </span>
+								<div>
+									{formatBytes(server?.currentRX)}
+								</div>
 							</div>
 						</div>
 					</div>
-				</div>
-			{/each}
+				{/each}
+			{/key}
 		</div>
 	{/if}
 {/if}
