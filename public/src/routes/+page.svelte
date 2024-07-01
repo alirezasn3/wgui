@@ -44,21 +44,23 @@
 						)
 						role = data.role
 
-						servers = {}
+						let tempServers = {}
 
 						for (const peer of peers) {
 							for (const ssi of peer.serverSpecificInfo) {
-								if (servers[ssi.address]) {
-									servers[ssi.address].CurrentRX += ssi.currentRX
-									servers[ssi.address].CurrentTX += ssi.currentTX
+								if (tempServers[ssi.address]) {
+									tempServers[ssi.address].CurrentRX += ssi.currentRX
+									tempServers[ssi.address].CurrentTX += ssi.currentTX
 								} else
-									servers[ssi.address] = {
+									tempServers[ssi.address] = {
 										address: ssi.address,
 										currentTX: ssi.currentTX,
 										currentRX: ssi.currentRX
 									}
 							}
 						}
+
+						servers = tempServers
 					} else {
 						console.log(res.statusText)
 					}
