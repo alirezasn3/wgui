@@ -60,6 +60,8 @@
 									}
 							}
 						}
+
+						console.log(servers)
 					} else {
 						console.log(res.statusText)
 					}
