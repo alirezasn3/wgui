@@ -774,9 +774,5 @@ func main() {
 	e.GET("/api/me", GetMe)
 	e.GET("/api/logs", GetLogs)
 
-	e.RouteNotFound("/*", func(c echo.Context) error {
-		return c.Redirect(301, "/")
-	})
-
 	e.Logger.Fatal(e.StartTLS("0.0.0.0:443", filepath.Join(path, "certs", "server.pem"), filepath.Join(path, "certs", "server.key")))
 }
