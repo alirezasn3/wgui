@@ -79,3 +79,62 @@ export const formatBytes = (totalBytes: number, space = true) => {
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+export const htmlLegendPlugin = {
+	id: 'htmlLegend',
+	afterUpdate(
+		chart: {
+			data: { datasets: { data: { [x: string]: any } }[] }
+			options: { plugins: { legend: { labels: { generateLabels: (arg0: any) => any } } } }
+			config: { type: any }
+			toggleDataVisibility: (arg0: any) => void
+			setDatasetVisibility: (arg0: any, arg1: boolean) => void
+			isDatasetVisible: (arg0: any) => any
+			update: () => void
+		},
+		args: any,
+		options: { containerID: string }
+	) {
+		const container = document.getElementById(options.containerID)
+		if (!container) return
+		container.innerHTML = ''
+		const items = chart.options.plugins.legend.labels.generateLabels(chart)
+		items.forEach(
+			(item: {
+				index: any
+				datasetIndex: any
+				fillStyle: string
+				strokeStyle: string
+				lineWidth: string
+				fontColor: string
+				hidden: any
+				text: string
+			}) => {
+				const div = document.createElement('div')
+				div.className = 'flex mb-2 hover:cursor-pointer'
+				div.onclick = () => {
+					const { type } = chart.config
+					if (type === 'pie' || type === 'doughnut') {
+						chart.toggleDataVisibility(item.index)
+					} else {
+						chart.setDatasetVisibility(
+							item.datasetIndex,
+							!chart.isDatasetVisible(item.datasetIndex)
+						)
+					}
+					chart.update()
+				}
+				const box = document.createElement('div')
+				box.style.backgroundColor = item.fillStyle
+				box.className = `w-6 h-6 mr-3 rounded-full`
+				const text = document.createElement('div')
+				text.style.color = item.fontColor
+				text.style.textDecoration = item.hidden ? 'line-through' : ''
+				text.innerText = `${item.text} (${chart.data.datasets[0].data[item.index]})`
+				div.appendChild(box)
+				div.appendChild(text)
+				container.appendChild(div)
+			}
+		)
+	}
+}
