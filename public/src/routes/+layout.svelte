@@ -45,7 +45,7 @@
 					>LOGS</a
 				>
 			{/if}
-			{#if $page.url.pathname !== '/stats' && $role === 'admin'}
+			{#if $page.url.pathname !== '/stats' && $role !== 'user'}
 				<a href="/stats" class="my-2 w-40 rounded bg-neutral-50 py-2 text-center text-neutral-950"
 					>STATS</a
 				>
@@ -76,7 +76,7 @@
 					>LOGS</a
 				>
 			{/if}
-			{#if $page.url.pathname !== '/stats' && $role === 'admin'}
+			{#if $page.url.pathname !== '/stats' && $role !== 'user'}
 				<a
 					href="/stats"
 					class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
