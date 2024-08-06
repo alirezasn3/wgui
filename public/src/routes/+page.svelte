@@ -29,6 +29,7 @@
 	let config = ''
 	let servers: ServerSpecificInfo[] = []
 	let showSSI = false
+	let combinedUsage = ''
 
 	;(async () => {
 		let t
@@ -84,16 +85,26 @@
 			} catch (error) {
 				console.log(error)
 			}
-			$loading = false
 			await sleep(1000)
 		}
 	})()
 
 	$: config = `[Interface]\nPrivateKey=${currentPeer?.privateKey}\nAddress=${currentPeer?.allowedIPs}\nDNS=1.1.1.1,8.8.8.8\n[Peer]\nPublicKey=${serverPublicKey}\nAllowedIPs=0.0.0.0/0\nEndpoint=${selectedEndpoint}`
 
+	$: combinedUsage = formatBytes(
+		peers.reduce((previous: number, current: Peer) => {
+			if (
+				current.name.toLowerCase().includes($search.toLocaleLowerCase()) ||
+				current.allowedIPs.includes($search)
+			)
+				return previous + current.totalRX + current.totalTX
+			return previous
+		}, 0)
+	)
+
 	onMount(async () => {
 		try {
-			$loading = true
+			loading.set(true)
 			let res = await fetch('/api/config')
 			const data = await res.json()
 			serverPublicKey = data.serverPublicKey
@@ -116,6 +127,8 @@
 		} catch (e) {
 			console.log(e)
 			error = (e as Error).message
+		} finally {
+			loading.set(false)
 		}
 	})
 
@@ -311,7 +324,7 @@
 			</button>
 		{/if}
 	</div>
-	{#if $role === 'admin'}
+	{#if $role === 'admin' && $search.length === 0}
 		<div
 			class="mb-2 overflow-hidden rounded border border-neutral-800 px-4 py-2 transition-all {showSSI
 				? 'max-h-[1000px]'
@@ -348,20 +361,28 @@
 			</div>
 		</div>
 	{/if}
-	<div class="mb-2 rounded border border-neutral-800 px-4 py-2">
-		<div class="flex items-center">
-			<div class="mr-2 h-2 w-2 rounded-full bg-blue-900"></div>
-			Zero Usage
+	{#if $search.length === 0}
+		<div
+			class="mb-2 flex items-center rounded border border-neutral-800 px-4 py-2 text-xs md:text-sm"
+		>
+			<div class="flex items-center">
+				<div class="mr-2 h-2 w-2 rounded-full bg-blue-900"></div>
+				No Usage
+			</div>
+			<div class="mx-4 flex items-center">
+				<div class="mr-2 h-2 w-2 rounded-full bg-red-800"></div>
+				Expired
+			</div>
+			<div class="flex items-center">
+				<div class="mr-2 h-2 w-2 rounded-full bg-yellow-700"></div>
+				Usage Limit Reached
+			</div>
 		</div>
-		<div class="flex items-center">
-			<div class="mr-2 h-2 w-2 rounded-full bg-red-800"></div>
-			Expired
-		</div>
-		<div class="flex items-center">
-			<div class="mr-2 h-2 w-2 rounded-full bg-yellow-700"></div>
-			Usage Limit Reached
-		</div>
-	</div>
+	{/if}
+	{#if $search.length > 0}
+		<div class="mb-2 rounded border border-neutral-800 px-4 py-2">
+			Combined Usage: {combinedUsage}
+		</div>{/if}
 {/if}
 
 {#if currentPeer !== null}
@@ -441,14 +462,16 @@
 						share
 					</span>
 				</button>
-				<button on:click={() => sharePeer(true)} class="relative">
-					<span
-						class="material-symbols-outlined rounded-full border border-neutral-800 p-2 hover:cursor-pointer hover:bg-neutral-950"
-					>
-						share
-					</span>
-					<div class="absolute -right-2 top-0 text-xs font-thin tracking-tighter">bot</div>
-				</button>
+				{#if $role === 'admin'}
+					<button on:click={() => sharePeer(true)} class="relative">
+						<span
+							class="material-symbols-outlined rounded-full border border-neutral-800 p-2 hover:cursor-pointer hover:bg-neutral-950"
+						>
+							share
+						</span>
+						<div class="absolute -right-2 top-0 text-xs font-thin tracking-tighter">bot</div>
+					</button>
+				{/if}
 			</div>
 		{/if}
 		<div class="my-4 h-[1px] bg-neutral-800"></div>
