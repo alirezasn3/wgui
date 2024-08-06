@@ -1,9 +1,9 @@
 <script lang="ts">
-	import type { Peer } from '$lib'
+	import { htmlLegendPlugin, type Peer } from '$lib'
 	import { onMount } from 'svelte'
 	import { getContext } from 'svelte'
 	import type { Writable } from 'svelte/store'
-	import Chart, { Legend } from 'chart.js/auto'
+	import Chart from 'chart.js/auto'
 
 	const loading: Writable<boolean> = getContext('loading')
 
@@ -17,10 +17,10 @@
 	$: percent = ((doneCount / totalCount) * 100).toFixed() + '%'
 
 	function fetchWithCount(url: string) {
-		return new Promise<{ asName: string }>(async (resolve, reject) => {
+		return new Promise<{ asName: string; organizationName: string }>(async (resolve, reject) => {
 			const res = await fetch(url)
 			if (res.status !== 200) return reject(res.statusText)
-			const data: { asName: string } = await res.json()
+			const data: { asName: string; organizationName: string } = await res.json()
 			doneCount++
 			return resolve(data)
 		})
@@ -48,28 +48,35 @@
 
 				for (const d of data) {
 					if (d.status === 'fulfilled') {
-						if (isps[d.value.asName]) isps[d.value.asName]++
-						else isps[d.value.asName] = 1
+						if (isps[d.value.asName + ' ' + d.value.organizationName])
+							isps[d.value.asName + ' ' + d.value.organizationName]++
+						else isps[d.value.asName + ' ' + d.value.organizationName] = 1
 					}
 				}
 
-				new Chart(canvas, {
+				const ch = new Chart(canvas, {
 					type: 'doughnut',
 					options: {
 						responsive: true,
 						plugins: {
 							legend: {
-								position: document.body.clientWidth < 1200 ? 'bottom' : 'chartArea'
+								display: false
+							},
+							// @ts-ignore
+							htmlLegend: {
+								containerID: 'legend'
 							}
 						}
 					},
+					// @ts-ignore
+					plugins: [htmlLegendPlugin],
 					data: {
 						labels: Object.keys(isps),
 						datasets: [
 							{
 								label: `Peers`,
 								data: Object.values(isps),
-								hoverOffset: 4
+								hoverOffset: 8
 							}
 						]
 					}
@@ -86,7 +93,7 @@
 	})
 </script>
 
-<div class="relative">
+<div class="relative flex max-xl:flex-col">
 	{#if percent !== '100%'}
 		<div
 			class="absolute left-0 top-0 flex h-[calc(100svh-96px)] w-full items-center justify-center"
@@ -96,6 +103,9 @@
 			</div>
 		</div>
 	{/if}
-	<canvas bind:this={canvas} class="max-h-[calc(100svh-96px)] w-full rounded bg-neutral-900 p-4"
+	<canvas
+		bind:this={canvas}
+		class="max-h-[calc(100svh-96px)] w-full max-w-3xl rounded bg-neutral-900 p-4 max-xl:mb-4 xl:mr-4"
 	></canvas>
+	<div id="legend"></div>
 </div>
