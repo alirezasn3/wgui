@@ -217,12 +217,13 @@
 				color: { dark: '#023020' }
 			})
 			if (withTelegramBotLink) {
+				if (!currentPeer) return
 				await navigator.share({
 					title: currentPeer?.name,
 					files: [
 						dataURLtoFile(dataurl, `${currentPeer?.name.replaceAll('-', '')}.png`, 'image/png')
 					],
-					url: `https://t.me/${telegramBotID}?start=${currentPeer?.publicKey}`
+					url: `https://t.me/${telegramBotID}?start=${btoa(currentPeer.publicKey)}`
 				})
 			} else {
 				await navigator.share({
