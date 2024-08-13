@@ -209,30 +209,23 @@
 		return new File([u8arr], filename, { type })
 	}
 
-	async function sharePeer(withTelegramBotLink = false) {
+	async function sharePeer(withTelegramBotLink = false, noImage = false) {
 		try {
 			error = ''
+			if (!currentPeer) return
 			const dataurl = await qr.toDataURL(document.createElement('canvas'), config, {
 				width: 720,
 				color: { dark: '#023020' }
 			})
-			if (withTelegramBotLink) {
-				if (!currentPeer) return
-				await navigator.share({
-					title: currentPeer?.name,
-					files: [
-						dataURLtoFile(dataurl, `${currentPeer?.name.replaceAll('-', '')}.png`, 'image/png')
-					],
-					url: `https://t.me/${telegramBotID}?start=${btoa(currentPeer.publicKey)}`
-				})
-			} else {
-				await navigator.share({
-					title: currentPeer?.name,
-					files: [
-						dataURLtoFile(dataurl, `${currentPeer?.name.replaceAll('-', '')}.png`, 'image/png')
-					]
-				})
-			}
+			await navigator.share({
+				title: currentPeer?.name,
+				files: noImage
+					? undefined
+					: [dataURLtoFile(dataurl, `${currentPeer?.name.replaceAll('-', '')}.png`, 'image/png')],
+				url: withTelegramBotLink
+					? `https://t.me/${telegramBotID}?start=${btoa(currentPeer.publicKey)}`
+					: undefined
+			})
 		} catch (e) {
 			console.log(e)
 			error = (e as Error).message
@@ -376,7 +369,7 @@
 			</div>
 			<div class="flex items-center">
 				<div class="mr-2 h-2 w-2 rounded-full bg-yellow-700"></div>
-				Usage Limit Reached
+				Limited
 			</div>
 		</div>
 	{/if}
@@ -456,21 +449,30 @@
 						download
 					</span>
 				</button>
-				<button on:click={() => sharePeer()}>
+				<button on:click={() => sharePeer()} class="relative">
 					<span
 						class="material-symbols-outlined rounded-full border border-neutral-800 p-2 hover:cursor-pointer hover:bg-neutral-950"
 					>
 						share
 					</span>
+					<div class="absolute -right-2 top-0 text-xs font-thin tracking-tighter">qrc</div>
 				</button>
 				{#if $role === 'admin'}
+					<button on:click={() => sharePeer(true, true)} class="relative">
+						<span
+							class="material-symbols-outlined rounded-full border border-neutral-800 p-2 hover:cursor-pointer hover:bg-neutral-950"
+						>
+							share
+						</span>
+						<div class="absolute -right-2 top-0 text-xs font-thin tracking-tighter">url</div>
+					</button>
 					<button on:click={() => sharePeer(true)} class="relative">
 						<span
 							class="material-symbols-outlined rounded-full border border-neutral-800 p-2 hover:cursor-pointer hover:bg-neutral-950"
 						>
 							share
 						</span>
-						<div class="absolute -right-2 top-0 text-xs font-thin tracking-tighter">bot</div>
+						<div class="absolute -right-2 top-0 text-[10px] font-thin tracking-tighter">full</div>
 					</button>
 				{/if}
 			</div>
@@ -586,6 +588,10 @@
 		{#if currentPeer.preferredEndpoint}
 			<div class="mb-2">{currentPeer.preferredEndpoint}</div>
 		{/if}
+		<div class="mb-2 {currentPeer.telegramChatID === 0 ? 'text-red-900' : 'text-blue-900'}">
+			Telegram Bot {currentPeer.telegramChatID === 0 ? 'Not Activated' : 'Activated'}
+		</div>
+
 		{#if !editing}
 			<select
 				disabled={$role === 'user'}
