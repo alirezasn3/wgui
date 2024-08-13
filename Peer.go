@@ -20,6 +20,7 @@ type Peer struct {
 	TotalTX            int64                 `json:"totalTX" bson:"totalTX"`
 	TotalRX            int64                 `json:"totalRX" bson:"totalRX"`
 	ServerSpecificInfo []*ServerSpecificInfo `json:"serverSpecificInfo" bson:"serverSpecificInfo"`
+	TelegramChatID     int64                 `json:"telegramChatID" bson:"telegramChatID"`
 }
 
 type ServerSpecificInfo struct {
