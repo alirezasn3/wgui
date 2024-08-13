@@ -24,6 +24,7 @@ export interface Peer {
 	totalTX: number
 	totalRX: number
 	serverSpecificInfo: ServerSpecificInfo[]
+	telegramChatID: number
 }
 
 export interface Log {
