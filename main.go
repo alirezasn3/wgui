@@ -133,7 +133,7 @@ func init() {
 
 	// create ttl index for logs
 	indexModel := mongo.IndexModel{
-		Keys:    bson.D{{"expireAt", 1}},
+		Keys:    bson.D{{Key: "expireAt", Value: 1}},
 		Options: options.Index().SetExpireAfterSeconds(0),
 	}
 	_, err = mongoClient.Database(config.DBName).Collection("logs").Indexes().CreateOne(context.TODO(), indexModel)
