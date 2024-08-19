@@ -6,6 +6,7 @@
 	import { page } from '$app/stores'
 	import { getContext } from 'svelte'
 	import type { Writable } from 'svelte/store'
+	import protobuf from 'protobufjs'
 
 	const loading: Writable<boolean> = getContext('loading')
 	const search: Writable<string> = getContext('search')
@@ -34,6 +35,7 @@
 	;(async () => {
 		let t
 		let res: Response
+		let ab
 		let data
 		while (true) {
 			if ($page.url.pathname !== '/') {
@@ -45,26 +47,29 @@
 				if (currentPeer === null) {
 					res = await fetch('/api/peers')
 					if (res.status === 200) {
-						data = await res.json()
-						peers = Object.values(data.peers as { string: Peer }).sort(
-							(a, b) => a.expiresAt - b.expiresAt
-						)
-						$role = data.role
+						const pb = await protobuf.load('/Peer.proto')
+						ab = await res.arrayBuffer()
+						data = pb.lookupType('PBPeers').decode(new Uint8Array(ab), ab.byteLength).toJSON()
+
+						console.log(data)
+
+						peers = data.Peers
+						$role = data.Role
 
 						const tempServers: Record<string, ServerSpecificInfo> = {}
 
 						for (const peer of peers) {
-							for (const ssi of peer.serverSpecificInfo) {
-								if (tempServers[ssi.address]) {
-									tempServers[ssi.address].currentRX += ssi.currentRX
-									tempServers[ssi.address].currentTX += ssi.currentTX
+							for (const ssi of peer.ServerSpecificInfo) {
+								if (tempServers[ssi.Address]) {
+									tempServers[ssi.Address].CurrentRX += ssi.CurrentRX
+									tempServers[ssi.Address].CurrentTX += ssi.CurrentTX
 								} else {
-									tempServers[ssi.address] = {
-										address: ssi.address,
-										currentTX: ssi.currentTX,
-										currentRX: ssi.currentRX,
-										lastHandshakeTime: '',
-										endpoint: ''
+									tempServers[ssi.Address] = {
+										Address: ssi.Address,
+										CurrentTX: ssi.CurrentTX,
+										CurrentRX: ssi.CurrentRX,
+										LastHandshakeTime: '',
+										Endpoint: ''
 									}
 								}
 							}
@@ -75,7 +80,7 @@
 						console.log(res.statusText)
 					}
 				} else {
-					res = await fetch('/api/peers/' + encodeURIComponent(currentPeer._id))
+					res = await fetch('/api/peers/' + encodeURIComponent(currentPeer.ID))
 					if (res.status === 200) {
 						if (currentPeer) currentPeer = await res.json()
 					} else {
@@ -89,15 +94,15 @@
 		}
 	})()
 
-	$: config = `[Interface]\nPrivateKey=${currentPeer?.privateKey}\nAddress=${currentPeer?.allowedIPs}\nDNS=1.1.1.1,8.8.8.8\n[Peer]\nPublicKey=${serverPublicKey}\nAllowedIPs=0.0.0.0/0\nEndpoint=${selectedEndpoint}`
+	$: config = `[Interface]\nPrivateKey=${currentPeer?.PrivateKey}\nAddress=${currentPeer?.AllowedIPs}\nDNS=1.1.1.1,8.8.8.8\n[Peer]\nPublicKey=${serverPublicKey}\nAllowedIPs=0.0.0.0/0\nEndpoint=${selectedEndpoint}`
 
 	$: combinedUsage = formatBytes(
 		peers.reduce((previous: number, current: Peer) => {
 			if (
-				current.name.toLowerCase().includes($search.toLocaleLowerCase()) ||
-				current.allowedIPs.includes($search)
+				current.Name.toLowerCase().includes($search.toLocaleLowerCase()) ||
+				current.AllowedIPs.includes($search)
 			)
-				return previous + current.totalRX + current.totalTX
+				return previous + current.TotalRX + current.TotalTX
 			return previous
 		}, 0)
 	)
@@ -138,11 +143,11 @@
 
 			if (!currentPeer) return
 
-			if (!window.confirm(`Delete ${currentPeer?.name}?`)) return
+			if (!window.confirm(`Delete ${currentPeer?.Name}?`)) return
 
 			loading.set(true)
 
-			const res = await fetch('/api/peers/' + encodeURIComponent(currentPeer._id), {
+			const res = await fetch('/api/peers/' + encodeURIComponent(currentPeer.ID), {
 				method: 'DELETE'
 			})
 			if (res.status === 200) {
@@ -167,25 +172,25 @@
 
 			loading.set(true)
 
-			const res = await fetch('/api/peers/' + encodeURIComponent(currentPeer._id), {
+			const res = await fetch('/api/peers/' + encodeURIComponent(currentPeer.ID), {
 				method: 'PATCH',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
-					name: currentPeer.name !== newName ? newName : undefined,
+					name: currentPeer.Name !== newName ? newName : undefined,
 					allowedUsage:
-						currentPeer.allowedUsage / 1024000000 !== newAllowedUsage
+						currentPeer.AllowedUsage / 1024000000 !== newAllowedUsage
 							? newAllowedUsage * 1024000000
 							: undefined,
 					expiresAt: expiresAtChanged ? Date.now() + newExpiresAt * 24 * 3600 * 1000 : undefined,
-					role: currentPeer.role !== newRole ? newRole : undefined,
+					role: currentPeer.Role !== newRole ? newRole : undefined,
 					preferredEndpoint:
-						currentPeer.preferredEndpoint !== newPreferredEndpoint
+						currentPeer.PreferredEndpoint !== newPreferredEndpoint
 							? newPreferredEndpoint
 							: undefined
 				})
 			})
 			if (res.status === 200) {
-				if (currentPeer.name !== newName) currentPeer.name = newName
+				if (currentPeer.Name !== newName) currentPeer.Name = newName
 				editing = false
 			} else {
 				error = res.statusText
@@ -218,12 +223,12 @@
 				color: { dark: '#023020' }
 			})
 			await navigator.share({
-				title: currentPeer?.name,
+				title: currentPeer?.Name,
 				files: noImage
 					? undefined
-					: [dataURLtoFile(dataurl, `${currentPeer?.name.replaceAll('-', '')}.png`, 'image/png')],
+					: [dataURLtoFile(dataurl, `${currentPeer?.Name.replaceAll('-', '')}.png`, 'image/png')],
 				url: withTelegramBotLink
-					? `https://t.me/${telegramBotID}?start=${btoa(currentPeer.publicKey)}`
+					? `https://t.me/${telegramBotID}?start=${btoa(currentPeer.PublicKey)}`
 					: undefined
 			})
 		} catch (e) {
@@ -238,7 +243,7 @@
 			const file = new Blob([config], { type: 'application/octet-stream' })
 			const a = document.createElement('a')
 			a.href = URL.createObjectURL(file)
-			a.download = currentPeer?.name.replaceAll('-', '') + '.conf'
+			a.download = currentPeer?.Name.replaceAll('-', '') + '.conf'
 			a.click()
 		} catch (e) {
 			console.log(e)
@@ -264,7 +269,7 @@
 
 			loading.set(true)
 
-			const res = await fetch('/api/peers/' + encodeURIComponent(currentPeer._id), {
+			const res = await fetch('/api/peers/' + encodeURIComponent(currentPeer.ID), {
 				method: 'PUT'
 			})
 
@@ -285,7 +290,7 @@
 
 			loading.set(true)
 
-			const res = await fetch('/api/peers/' + encodeURIComponent(currentPeer._id), {
+			const res = await fetch('/api/peers/' + encodeURIComponent(currentPeer.ID), {
 				method: 'PATCH',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
@@ -334,19 +339,19 @@
 				{#each servers as server}
 					<div class="rounded border border-neutral-800 px-4 py-2">
 						<div class="font-bold">
-							{server?.address}
+							{server?.Address}
 						</div>
 						<div class="flex">
 							<div class="mr-2 flex">
 								<span class="material-symbols-outlined mr-1"> arrow_upward </span>
 								<div>
-									{formatBytes(server?.currentTX)}
+									{formatBytes(server?.CurrentTX)}
 								</div>
 							</div>
 							<div class="flex">
 								<span class="material-symbols-outlined mr-1"> arrow_downward </span>
 								<div>
-									{formatBytes(server?.currentRX)}
+									{formatBytes(server?.CurrentRX)}
 								</div>
 							</div>
 						</div>
@@ -405,11 +410,11 @@
 							editing = true
 							if (currentPeer) {
 								expiresAtChanged = false
-								newName = currentPeer.name
-								newAllowedUsage = currentPeer.allowedUsage / 1024000000
-								newExpiresAt = +((currentPeer.expiresAt - Date.now()) / 1000 / 3600 / 24).toFixed(2)
-								newPreferredEndpoint = currentPeer.preferredEndpoint
-								newRole = currentPeer.role
+								newName = currentPeer.Name
+								newAllowedUsage = currentPeer.AllowedUsage / 1024000000
+								newExpiresAt = +((currentPeer.ExpiresAt - Date.now()) / 1000 / 3600 / 24).toFixed(2)
+								newPreferredEndpoint = currentPeer.PreferredEndpoint
+								newRole = currentPeer.Role
 							}
 						}}
 					>
@@ -556,40 +561,40 @@
 			</div>
 		{:else}
 			<div class="mb-2 flex items-center">
-				<div class="text-lg font-bold">{currentPeer.name}</div>
-				<div class="ml-1">{'('}{currentPeer.role}{')'}</div>
+				<div class="text-lg font-bold">{currentPeer.Name}</div>
+				<div class="ml-1">{'('}{currentPeer.Role}{')'}</div>
 			</div>
 			{#if $role !== 'user'}
 				<div class="mb-2 flex items-center">
-					<div>{currentPeer.allowedIPs}</div>
+					<div>{currentPeer.AllowedIPs}</div>
 				</div>
 			{/if}
-			<div class="mb-2">{formatExpiry(currentPeer.expiresAt)}</div>
+			<div class="mb-2">{formatExpiry(currentPeer.ExpiresAt)}</div>
 			<div class="mb-2">
-				{formatBytes(currentPeer.totalTX + currentPeer.totalRX)} / {formatBytes(
-					currentPeer.allowedUsage
+				{formatBytes(currentPeer.TotalTX + currentPeer.TotalRX)} / {formatBytes(
+					currentPeer.AllowedUsage
 				)}
 			</div>
 			<div class="mb-2 flex">
 				<div class="mr-2 flex">
 					<span class="material-symbols-outlined mr-1"> arrow_upward </span>
 					<div>
-						{formatBytes(currentPeer.totalTX)}
+						{formatBytes(currentPeer.TotalTX)}
 					</div>
 				</div>
 				<div class="flex">
 					<span class="material-symbols-outlined mr-1"> arrow_downward </span>
 					<div>
-						{formatBytes(currentPeer.totalRX)}
+						{formatBytes(currentPeer.TotalRX)}
 					</div>
 				</div>
 			</div>
 		{/if}
-		{#if currentPeer.preferredEndpoint}
-			<div class="mb-2">{currentPeer.preferredEndpoint}</div>
+		{#if currentPeer.PreferredEndpoint}
+			<div class="mb-2">{currentPeer.PreferredEndpoint}</div>
 		{/if}
-		<div class="mb-2 {currentPeer.telegramChatID === 0 ? 'text-red-900' : 'text-blue-900'}">
-			Telegram Bot {currentPeer.telegramChatID === 0 ? 'Not Activated' : 'Activated'}
+		<div class="mb-2 {currentPeer.TelegramChatID === 0 ? 'text-red-900' : 'text-blue-900'}">
+			Telegram Bot {currentPeer.TelegramChatID === 0 ? 'Not Activated' : 'Activated'}
 		</div>
 
 		{#if !editing}
@@ -620,32 +625,32 @@
 						<span>{showSSI ? 'HIDE' : 'SHOW'} SSIs</span>
 					</button>
 					<div class="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-						{#each currentPeer.serverSpecificInfo as ssi}
+						{#each currentPeer.ServerSpecificInfo as ssi}
 							<div class="rounded border border-neutral-800 px-4 py-2">
-								<div class="font-bold">{ssi.address}</div>
+								<div class="font-bold">{ssi.Address}</div>
 								<div class="flex">
 									<div class="mr-1">Endpoint:</div>
 									<div>
-										{!ssi.endpoint || ssi.endpoint === '<nil>' ? 'unknown' : ssi.endpoint}
+										{!ssi.Endpoint || ssi.Endpoint === '<nil>' ? 'unknown' : ssi.Endpoint}
 									</div>
 								</div>
 								<div class="flex">
 									<div class="mr-1">Last Handshake:</div>
 									<div>
-										{ssi.lastHandshakeTime || 'unknown'}
+										{ssi.LastHandshakeTime || 'unknown'}
 									</div>
 								</div>
 								<div class="flex">
 									<div class="mr-2 flex">
 										<span class="material-symbols-outlined mr-1"> arrow_upward </span>
 										<div>
-											{formatBytes(ssi.currentTX)}
+											{formatBytes(ssi.CurrentTX)}
 										</div>
 									</div>
 									<div class="flex">
 										<span class="material-symbols-outlined mr-1"> arrow_downward </span>
 										<div>
-											{formatBytes(ssi.currentRX)}
+											{formatBytes(ssi.CurrentRX)}
 										</div>
 									</div>
 								</div>
@@ -670,13 +675,13 @@
 				<div class="overflow-hidden text-ellipsis">
 					<span class="text-purple-500">PrivateKey = </span>
 					<span class="text-orange-500">
-						{currentPeer.privateKey}
+						{currentPeer.PrivateKey}
 					</span>
 				</div>
 				<div>
 					<span class="text-purple-500">Address = </span>
 					<span class="text-blue-500">
-						{currentPeer.allowedIPs}
+						{currentPeer.AllowedIPs}
 					</span>
 				</div>
 				<div>
@@ -713,17 +718,15 @@
 				<th class="px-2 py-2">Usage</th>
 			</thead>
 			<tbody>
-				{#each peers.filter((p) => !search || p.name
-							.toLowerCase()
-							.includes($search.toLowerCase()) || p.allowedIPs.includes($search)) as peer, i}
+				{#each peers.filter((p) => !search || p.Name.toLowerCase().includes($search.toLowerCase()) || p.AllowedIPs.includes($search)) as peer, i}
 					<tr
 						on:click={async () => {
 							currentPeer = peer
-							newName = peer.name
-							newAllowedUsage = peer.allowedUsage / 1024000000
-							newExpiresAt = +((peer.expiresAt - Date.now()) / 1000 / 3600 / 24).toFixed(2)
-							newPreferredEndpoint = peer.preferredEndpoint
-							newRole = peer.role
+							newName = peer.Name
+							newAllowedUsage = peer.AllowedUsage / 1024000000
+							newExpiresAt = +((peer.ExpiresAt - Date.now()) / 1000 / 3600 / 24).toFixed(2)
+							newPreferredEndpoint = peer.PreferredEndpoint
+							newRole = peer.Role
 							while (!document.getElementById('canvas')) {
 								await sleep(100)
 							}
@@ -733,19 +736,19 @@
 								color: { dark: '#023020' }
 							})
 						}}
-						class="{peer.disabled && peer.totalRX + peer.totalTX >= peer.allowedUsage
+						class="{peer.Disabled && peer.TotalRX + peer.TotalTX >= peer.AllowedUsage
 							? 'bg-yellow-700 hover:bg-yellow-800'
-							: peer.disabled
+							: peer.Disabled
 								? 'bg-red-800 hover:bg-red-900'
-								: !peer.disabled && peer.totalRX + peer.totalTX === 0
+								: !peer.Disabled && peer.TotalRX + peer.TotalTX === 0
 									? 'bg-blue-900 hover:bg-blue-800'
 									: 'bg-neutral-900 hover:bg-neutral-800'} border-neutral-800 text-left odd:border-y hover:cursor-pointer"
 					>
 						<td class="px-2 py-1">{i + 1}</td>
-						<td class="whitespace-nowrap px-2 py-1">{peer.name}</td>
-						<td class="whitespace-nowrap px-2 py-1">{formatExpiry(peer.expiresAt)}</td>
+						<td class="whitespace-nowrap px-2 py-1">{peer.Name}</td>
+						<td class="whitespace-nowrap px-2 py-1">{formatExpiry(peer.ExpiresAt)}</td>
 						<td class="whitespace-nowrap px-2 py-1"
-							>{formatBytes(peer.totalTX + peer.totalRX)}/{formatBytes(peer.allowedUsage)}</td
+							>{formatBytes(peer.TotalTX + peer.TotalRX)}/{formatBytes(peer.AllowedUsage)}</td
 						>
 					</tr>
 				{/each}

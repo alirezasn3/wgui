@@ -1,0 +1,31 @@
+syntax="proto3";
+
+option go_package = "./";
+
+package main;
+
+message PBServerSpecificInfo {
+	string Address = 1;
+	string LastHandshakeTime = 2;
+	string Endpoint = 3;
+	int64 CurrentTX = 4;
+	int64 CurrentRX = 5;
+}
+
+
+message PBPeer {
+    string ID = 1;
+    string Name = 2;
+    string AllowedIPs = 3;
+    bool Disabled = 4;
+    int64 AllowedUsage = 5;
+    int64 ExpiresAt = 6;
+    int64 TotalTX = 7;
+    int64 TotalRX = 8;
+    repeated PBServerSpecificInfo ServerSpecificInfo = 9;
+}
+
+message PBPeers {
+    repeated PBPeer Peers = 1;
+    string Role = 2;
+}

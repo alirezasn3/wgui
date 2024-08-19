@@ -1,30 +1,30 @@
 // place files you want to import through the `$lib` alias in this folder.
 
 export interface ServerSpecificInfo {
-	address: string
-	lastHandshakeTime: string
-	endpoint: string
-	currentTX: number
-	currentRX: number
+	Address: string
+	LastHandshakeTime: string
+	Endpoint: string
+	CurrentTX: number
+	CurrentRX: number
 }
 
 export interface Peer {
-	_id: string
-	role: string
-	name: string
-	preferredEndpoint: string
-	allowedIPs: string
-	publicKey: string
-	privateKey: string
-	disabled: boolean
-	allowedUsage: number
-	expiresAt: number
-	endpoint: string
-	lastHandshakeTime: string
-	totalTX: number
-	totalRX: number
-	serverSpecificInfo: ServerSpecificInfo[]
-	telegramChatID: number
+	ID: string
+	Role: string
+	Name: string
+	PreferredEndpoint: string
+	AllowedIPs: string
+	PublicKey: string
+	PrivateKey: string
+	Disabled: boolean
+	AllowedUsage: number
+	ExpiresAt: number
+	Endpoint: string
+	LastHandshakeTime: string
+	TotalTX: number
+	TotalRX: number
+	ServerSpecificInfo: ServerSpecificInfo[]
+	TelegramChatID: number
 }
 
 export interface Log {

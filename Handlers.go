@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
+	"google.golang.org/protobuf/proto"
 )
 
 func GetPeers(ctx echo.Context) error {
@@ -24,23 +25,73 @@ func GetPeers(ctx echo.Context) error {
 		return ctx.String(500, err.Error())
 	}
 
-	group := strings.Split(peer.Name, "-")[0]
+	pbPeers := make([]*PBPeer, 0, len(peers.peers))
 
 	if peer.Role == "admin" {
 		// return all peers
-		return ctx.JSON(200, map[string]interface{}{"role": peer.Role, "peers": peers.peers})
+		peers.mu.RLock()
+		defer peers.mu.RUnlock()
+		for _, p := range peers.peers {
+			pbPeer := &PBPeer{
+				ID:                 p.ID,
+				Name:               p.Name,
+				AllowedIPs:         p.AllowedIPs,
+				Disabled:           p.Disabled,
+				AllowedUsage:       p.AllowedUsage,
+				ExpiresAt:          p.ExpiresAt,
+				TotalTX:            p.TotalTX,
+				TotalRX:            p.TotalRX,
+				ServerSpecificInfo: []*PBServerSpecificInfo{},
+			}
+			for _, ssi := range p.ServerSpecificInfo {
+				pbPeer.ServerSpecificInfo = append(pbPeer.ServerSpecificInfo, &PBServerSpecificInfo{
+					Address:           ssi.Address,
+					LastHandshakeTime: ssi.LastHandshakeTime,
+					Endpoint:          ssi.Endpoint,
+					CurrentTX:         ssi.CurrentTX,
+					CurrentRX:         ssi.CurrentRX,
+				})
+			}
+			pbPeers = append(pbPeers, pbPeer)
+		}
 	} else {
 		// return only group's peers if user is not admin
-		var data []*Peer
+		group := strings.Split(peer.Name, "-")[0]
 		peers.mu.RLock()
 		defer peers.mu.RUnlock()
 		for _, p := range peers.peers {
 			if strings.HasPrefix(p.Name, group) {
-				data = append(data, p)
+
+				pbPeer := &PBPeer{
+					ID:                 p.ID,
+					Name:               p.Name,
+					AllowedIPs:         p.AllowedIPs,
+					Disabled:           p.Disabled,
+					AllowedUsage:       p.AllowedUsage,
+					ExpiresAt:          p.ExpiresAt,
+					TotalTX:            p.TotalTX,
+					TotalRX:            p.TotalRX,
+					ServerSpecificInfo: []*PBServerSpecificInfo{},
+				}
+				for _, ssi := range p.ServerSpecificInfo {
+					pbPeer.ServerSpecificInfo = append(pbPeer.ServerSpecificInfo, &PBServerSpecificInfo{
+						Address:           ssi.Address,
+						LastHandshakeTime: ssi.LastHandshakeTime,
+						Endpoint:          ssi.Endpoint,
+						CurrentTX:         ssi.CurrentTX,
+						CurrentRX:         ssi.CurrentRX,
+					})
+				}
+				pbPeers = append(pbPeers, pbPeer)
 			}
 		}
-		return ctx.JSON(200, map[string]interface{}{"role": peer.Role, "peers": data})
 	}
+
+	b, err := proto.Marshal(&PBPeers{Peers: pbPeers})
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+	return ctx.Blob(200, "application/x-protobuf", b)
 }
 
 func GetPeer(ctx echo.Context) error {

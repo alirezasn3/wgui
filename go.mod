@@ -5,6 +5,7 @@ go 1.21.6
 require (
 	go.mongodb.org/mongo-driver v1.14.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20230429144221-925a1e7659e6
+	google.golang.org/protobuf v1.34.2
 )
 
 require (
