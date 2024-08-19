@@ -24,11 +24,11 @@ type Peer struct {
 }
 
 type ServerSpecificInfo struct {
-	Address           string `json:"address" bson:"address"`
-	LastHandshakeTime string `json:"lastHandshakeTime" bson:"lastHandshakeTime"`
-	Endpoint          string `json:"endpoint" bson:"endpoint"`
-	CurrentTX         int64  `json:"currentTX" bson:"currentTX"`
-	CurrentRX         int64  `json:"currentRX" bson:"currentRX"`
+	Address           string `json:"address" bson:"Address"`
+	LastHandshakeTime string `json:"lastHandshakeTime" bson:"LastHandshakeTime"`
+	Endpoint          string `json:"endpoint" bson:"Endpoint"`
+	CurrentTX         int64  `json:"currentTX" bson:"CurrentTX"`
+	CurrentRX         int64  `json:"currentRX" bson:"CurrentRX"`
 }
 
 func (peer *Peer) FindSSIByAddress(address string) *ServerSpecificInfo {

@@ -53,7 +53,20 @@
 
 						console.log(data)
 
-						peers = data.Peers
+						peers = (data.Peers as Peer[])
+							.map((p) => {
+								p.AllowedUsage = Number(p.AllowedUsage)
+								p.ExpiresAt = Number(p.ExpiresAt)
+								p.TotalTX = Number(p.TotalTX)
+								p.TotalRX = Number(p.TotalRX)
+								p.TelegramChatID = Number(p.TelegramChatID)
+								for (const ssi of p.ServerSpecificInfo) {
+									ssi.CurrentRX = Number(ssi.CurrentRX)
+									ssi.CurrentTX = Number(ssi.CurrentTX)
+								}
+								return p
+							})
+							.sort((a, b) => a.ExpiresAt - b.ExpiresAt)
 						$role = data.Role
 
 						const tempServers: Record<string, ServerSpecificInfo> = {}

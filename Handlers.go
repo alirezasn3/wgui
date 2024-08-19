@@ -87,7 +87,7 @@ func GetPeers(ctx echo.Context) error {
 		}
 	}
 
-	b, err := proto.Marshal(&PBPeers{Peers: pbPeers})
+	b, err := proto.Marshal(&PBPeers{Peers: pbPeers, Role: peer.Role})
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
