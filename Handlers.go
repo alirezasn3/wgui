@@ -32,27 +32,16 @@ func GetPeers(ctx echo.Context) error {
 		peers.mu.RLock()
 		defer peers.mu.RUnlock()
 		for _, p := range peers.peers {
-			pbPeer := &PBPeer{
-				ID:                 p.ID,
-				Name:               p.Name,
-				AllowedIPs:         p.AllowedIPs,
-				Disabled:           p.Disabled,
-				AllowedUsage:       p.AllowedUsage,
-				ExpiresAt:          p.ExpiresAt,
-				TotalTX:            p.TotalTX,
-				TotalRX:            p.TotalRX,
-				ServerSpecificInfo: []*PBServerSpecificInfo{},
-			}
-			for _, ssi := range p.ServerSpecificInfo {
-				pbPeer.ServerSpecificInfo = append(pbPeer.ServerSpecificInfo, &PBServerSpecificInfo{
-					Address:           ssi.Address,
-					LastHandshakeTime: ssi.LastHandshakeTime,
-					Endpoint:          ssi.Endpoint,
-					CurrentTX:         ssi.CurrentTX,
-					CurrentRX:         ssi.CurrentRX,
-				})
-			}
-			pbPeers = append(pbPeers, pbPeer)
+			pbPeers = append(pbPeers, &PBPeer{
+				ID:           p.ID,
+				Name:         p.Name,
+				AllowedIPs:   p.AllowedIPs,
+				Disabled:     p.Disabled,
+				AllowedUsage: p.AllowedUsage,
+				ExpiresAt:    p.ExpiresAt,
+				TotalTX:      p.TotalTX,
+				TotalRX:      p.TotalRX,
+			})
 		}
 	} else {
 		// return only group's peers if user is not admin
@@ -61,8 +50,7 @@ func GetPeers(ctx echo.Context) error {
 		defer peers.mu.RUnlock()
 		for _, p := range peers.peers {
 			if strings.HasPrefix(p.Name, group) {
-
-				pbPeer := &PBPeer{
+				pbPeers = append(pbPeers, &PBPeer{
 					ID:                 p.ID,
 					Name:               p.Name,
 					AllowedIPs:         p.AllowedIPs,
@@ -72,17 +60,7 @@ func GetPeers(ctx echo.Context) error {
 					TotalTX:            p.TotalTX,
 					TotalRX:            p.TotalRX,
 					ServerSpecificInfo: []*PBServerSpecificInfo{},
-				}
-				for _, ssi := range p.ServerSpecificInfo {
-					pbPeer.ServerSpecificInfo = append(pbPeer.ServerSpecificInfo, &PBServerSpecificInfo{
-						Address:           ssi.Address,
-						LastHandshakeTime: ssi.LastHandshakeTime,
-						Endpoint:          ssi.Endpoint,
-						CurrentTX:         ssi.CurrentTX,
-						CurrentRX:         ssi.CurrentRX,
-					})
-				}
-				pbPeers = append(pbPeers, pbPeer)
+				})
 			}
 		}
 	}
