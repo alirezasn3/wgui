@@ -12,6 +12,8 @@
 	const search: Writable<string> = getContext('search')
 	const role: Writable<string> = getContext('role')
 
+	let pb: protobuf.Root
+	let PBPeers: protobuf.Type
 	let peers: Peer[] = []
 	let currentPeer: Peer | null = null
 	let serverPublicKey = ''
@@ -31,54 +33,6 @@
 	let showSSI = false
 	let combinedUsage = ''
 
-	;(async () => {
-		let t
-		let res: Response
-		let ab
-		let data
-		while (true) {
-			if ($page.url.pathname !== '/') {
-				await sleep(1000)
-				continue
-			}
-			t = Date.now()
-			try {
-				if (currentPeer === null) {
-					res = await fetch('/api/peers')
-					if (res.status === 200) {
-						const pb = await protobuf.load('/Peer.proto')
-						ab = await res.arrayBuffer()
-						data = pb.lookupType('PBPeers').decode(new Uint8Array(ab), ab.byteLength).toJSON()
-
-						peers = (data.Peers as Peer[])
-							.map((p) => {
-								p.AllowedUsage = Number(p.AllowedUsage)
-								p.ExpiresAt = Number(p.ExpiresAt)
-								p.TotalTX = Number(p.TotalTX)
-								p.TotalRX = Number(p.TotalRX)
-								return p
-							})
-							.sort((a, b) => a.ExpiresAt - b.ExpiresAt)
-						$role = data.Role
-					} else {
-						console.log(res.statusText)
-					}
-				} else {
-					res = await fetch('/api/peers/' + encodeURIComponent(currentPeer.ID))
-					if (res.status === 200) {
-						if (currentPeer) currentPeer = await res.json()
-						$loading = false
-					} else {
-						console.log(res.statusText)
-					}
-				}
-			} catch (error) {
-				console.log(error)
-			}
-			await sleep(1000)
-		}
-	})()
-
 	$: config = `[Interface]\nPrivateKey=${currentPeer?.PrivateKey}\nAddress=${currentPeer?.AllowedIPs}\nDNS=1.1.1.1,8.8.8.8\n[Peer]\nPublicKey=${serverPublicKey}\nAllowedIPs=0.0.0.0/0\nEndpoint=${selectedEndpoint}`
 
 	$: combinedUsage = formatBytes(
@@ -96,11 +50,11 @@
 		try {
 			loading.set(true)
 			let res = await fetch('/api/config')
-			const data = await res.json()
-			serverPublicKey = data.serverPublicKey
-			serverAddress = data.serverAddress
-			endpoints = data.endpoints
-			telegramBotID = data.telegramBotID
+			const configData = await res.json()
+			serverPublicKey = configData.serverPublicKey
+			serverAddress = configData.serverAddress
+			endpoints = configData.endpoints
+			telegramBotID = configData.telegramBotID
 			selectedEndpoint = endpoints[0]
 			const peer = $page.url.searchParams.get('peer')
 			if (peer) {
@@ -114,11 +68,62 @@
 					color: { dark: '#023020' }
 				})
 			}
+			pb = await protobuf.load('/Peer.proto')
+			PBPeers = pb.lookupType('PBPeers')
+
+			loading.set(false)
+
+			let t
+			let ab
+			let data
+			while (true) {
+				if (PBPeers === undefined) {
+					await sleep(1000)
+					continue
+				}
+				if ($page.url.pathname !== '/') {
+					await sleep(1000)
+					continue
+				}
+				t = Date.now()
+				try {
+					if (currentPeer === null) {
+						res = await fetch('/api/peers')
+						if (res.status === 200) {
+							const pb = await protobuf.load('/Peer.proto')
+							ab = await res.arrayBuffer()
+							data = PBPeers.decode(new Uint8Array(ab), ab.byteLength).toJSON()
+							peers = (data.Peers as Peer[])
+								.map((p) => {
+									p.AllowedUsage = Number(p.AllowedUsage)
+									p.ExpiresAt = Number(p.ExpiresAt)
+									p.TotalTX = Number(p.TotalTX)
+									p.TotalRX = Number(p.TotalRX)
+									p.ServerSpecificInfo = []
+									return p
+								})
+								.sort((a, b) => a.ExpiresAt - b.ExpiresAt)
+							$role = data.Role
+						} else {
+							console.log(res.statusText)
+						}
+					} else {
+						res = await fetch('/api/peers/' + encodeURIComponent(currentPeer.ID))
+						if (res.status === 200) {
+							if (currentPeer) currentPeer = await res.json()
+							$loading = false
+						} else {
+							console.log(res.statusText)
+						}
+					}
+				} catch (error) {
+					console.log(error)
+				}
+				await sleep(1000)
+			}
 		} catch (e) {
 			console.log(e)
 			error = (e as Error).message
-		} finally {
-			loading.set(false)
 		}
 	})
 
