@@ -49,7 +49,7 @@ func GetPeers(ctx echo.Context) error {
 		peers.mu.RLock()
 		defer peers.mu.RUnlock()
 		for _, p := range peers.peers {
-			if strings.HasPrefix(p.Name, group) {
+			if strings.HasPrefix(p.Name, group+"-") {
 				pbPeers = append(pbPeers, &PBPeer{
 					ID:                 p.ID,
 					Name:               p.Name,
@@ -95,7 +95,7 @@ func GetPeer(ctx echo.Context) error {
 
 	// check if the requested peer is in the same group as the user
 	if peer.Role != "admin" {
-		if !strings.HasPrefix(p.Name, group) {
+		if !strings.HasPrefix(p.Name, group+"-") {
 			return ctx.NoContent(403)
 		}
 	}
@@ -126,7 +126,7 @@ func PostPeers(ctx echo.Context) error {
 
 	// check if the requested peer is in the same group as the user
 	if peer.Role == "distributor" {
-		if !strings.HasPrefix(data.Name, group) {
+		if !strings.HasPrefix(data.Name, group+"-") {
 			return ctx.NoContent(403)
 		}
 	}
@@ -259,7 +259,7 @@ func DeletePeers(ctx echo.Context) error {
 
 	// check if the requested peer is in the same group as the user
 	if peer.Role == "distributor" {
-		if !strings.HasPrefix(p.Name, group) {
+		if !strings.HasPrefix(p.Name, group+"-") {
 			return ctx.NoContent(403)
 		}
 	}
@@ -325,7 +325,7 @@ func PatchPeers(ctx echo.Context) error {
 
 	// check if the requested peer is in the same group as the user
 	if peer.Role == "distributor" {
-		if !strings.HasPrefix(p.Name, group) {
+		if !strings.HasPrefix(p.Name, group+"-") {
 			return ctx.NoContent(403)
 		}
 	}
@@ -452,7 +452,7 @@ func PutPeers(ctx echo.Context) error {
 
 	// check if the requested peer is in the same group as the user
 	if peer.Role == "distributor" {
-		if !strings.HasPrefix(p.Name, group) {
+		if !strings.HasPrefix(p.Name, group+"-") {
 			return ctx.NoContent(403)
 		}
 	}

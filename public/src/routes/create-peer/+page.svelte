@@ -41,7 +41,7 @@
 			const res = await fetch('/api/peers', {
 				method: 'POST',
 				body: JSON.stringify({
-					name: userRole === 'distributor' ? prefix + name : name,
+					name: userRole === 'distributor' ? prefix + '-' + name : name,
 					allowedUsage: allowedUsage * 1024000000,
 					expiresAt: Date.now() + expiresAt * 24 * 3600 * 1000,
 					preferredEndpoint: preferredEndpoint.length ? preferredEndpoint : undefined,
