@@ -93,7 +93,7 @@
 	</div>
 	{#if $loading}
 		<div
-			class="absolute left-0 top-0 flex h-full w-full items-center justify-center bg-neutral-950 bg-opacity-80"
+			class="fixed left-0 top-0 flex h-full w-full items-center justify-center bg-neutral-950 bg-opacity-80"
 		>
 			<svg
 				class="h-12 w-12 animate-spin text-neutral-50"

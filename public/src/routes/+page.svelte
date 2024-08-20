@@ -204,41 +204,27 @@
 		return new File([u8arr], filename, { type })
 	}
 
-	function addPeerInfoToCanvas(id: string) {
-		if (currentPeer === null) return
-		const canvasTemp = document.getElementById('canvas')
-		if (canvasTemp === null) return
-		const canvas = canvasTemp as HTMLCanvasElement
-		const ctx = canvas.getContext('2d')
-		if (ctx === null) return
-		ctx.font = '16px Roboto Mono'
-		ctx.fillStyle = '#023020'
-		const nameWidth = ctx.measureText(currentPeer.Name).width
-		const allowedIPsWidth = ctx.measureText(currentPeer.AllowedIPs).width
-		const w = document.body.clientWidth - 32 < 768 ? document.body.clientWidth - 32 : 768 - 32
-		ctx.fillText(currentPeer.Name, Math.round(w / 2 - nameWidth / 2), 16)
-		ctx.fillText(currentPeer.AllowedIPs, Math.round(w / 2 - allowedIPsWidth / 2), w - 4)
-	}
-
 	async function sharePeer(withTelegramBotLink = false, noImage = false) {
 		try {
 			error = ''
 			if (!currentPeer) return
 			const canvas = document.createElement('canvas')
+			canvas.width = canvas.clientWidth * 2
+			canvas.height = canvas.clientHeight * 2
+			const ctx = canvas.getContext('2d')
+			if (ctx === null) return
+			ctx.scale(2, 2)
 			await qr.toCanvas(canvas, config, {
 				width: 720,
 				color: { dark: '#023020' }
 			})
-			const ctx = canvas.getContext('2d')
-			if (ctx === null) return
 			ctx.font = '16px Roboto Mono'
 			ctx.fillStyle = '#023020'
 			const nameWidth = ctx.measureText(currentPeer.Name).width
 			const allowedIPsWidth = ctx.measureText(currentPeer.AllowedIPs).width
-			const w = document.body.clientWidth - 32 < 768 ? document.body.clientWidth - 32 : 768 - 32
-			ctx.fillText(currentPeer.Name, Math.round(w / 2 - nameWidth / 2), 16)
-			ctx.fillText(currentPeer.AllowedIPs, Math.round(w / 2 - allowedIPsWidth / 2), w - 4)
-			const dataurl = canvas.toDataURL()
+			ctx.fillText(currentPeer.Name, Math.round(360 - nameWidth / 2), 16)
+			ctx.fillText(currentPeer.AllowedIPs, Math.round(360 - allowedIPsWidth / 2), 716)
+			const dataurl = canvas.toDataURL('image/png', 1)
 			await navigator.share({
 				title: currentPeer?.Name,
 				files: noImage
@@ -581,13 +567,11 @@
 			<select
 				disabled={$role === 'user'}
 				bind:value={selectedEndpoint}
-				on:change={async () => {
-					await qr.toCanvas(document.getElementById('canvas'), config, {
+				on:change={() =>
+					qr.toCanvas(document.getElementById('canvas'), config, {
 						width: document.body.clientWidth - 32 < 768 ? document.body.clientWidth - 32 : 768 - 32,
 						color: { dark: '#023020' }
-					})
-					addPeerInfoToCanvas('id')
-				}}
+					})}
 				class="mb-4 w-full max-w-lg rounded border border-neutral-800 bg-neutral-900 px-4 py-2 outline-none"
 			>
 				{#each endpoints as e}
@@ -710,16 +694,16 @@
 							newExpiresAt = +((peer.ExpiresAt - Date.now()) / 1000 / 3600 / 24).toFixed(2)
 							newPreferredEndpoint = peer.PreferredEndpoint
 							newRole = peer.Role
-							while (!document.getElementById('canvas')) {
+							let canvas = document.getElementById('canvas')
+							while (!canvas) {
 								await sleep(100)
+								canvas = document.getElementById('canvas')
 							}
-							await qr.toCanvas(document.getElementById('canvas'), config, {
+							await qr.toCanvas(canvas, config, {
 								width:
 									document.body.clientWidth - 32 < 768 ? document.body.clientWidth - 32 : 768 - 32,
-								color: { dark: '#023020' },
-								margin: 4
+								color: { dark: '#023020' }
 							})
-							addPeerInfoToCanvas('id')
 						}}
 						class="{peer.Disabled && peer.TotalRX + peer.TotalTX >= peer.AllowedUsage
 							? 'bg-yellow-700 hover:bg-yellow-800'
