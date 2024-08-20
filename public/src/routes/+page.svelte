@@ -28,7 +28,6 @@
 	let expiresAtChanged = false
 	let error = ''
 	let config = ''
-	let servers: ServerSpecificInfo[] = []
 	let showSSI = false
 	let combinedUsage = ''
 
@@ -51,44 +50,16 @@
 						ab = await res.arrayBuffer()
 						data = pb.lookupType('PBPeers').decode(new Uint8Array(ab), ab.byteLength).toJSON()
 
-						console.log(data)
-
 						peers = (data.Peers as Peer[])
 							.map((p) => {
 								p.AllowedUsage = Number(p.AllowedUsage)
 								p.ExpiresAt = Number(p.ExpiresAt)
 								p.TotalTX = Number(p.TotalTX)
 								p.TotalRX = Number(p.TotalRX)
-								p.TelegramChatID = Number(p.TelegramChatID)
-								for (const ssi of p.ServerSpecificInfo) {
-									ssi.CurrentRX = Number(ssi.CurrentRX)
-									ssi.CurrentTX = Number(ssi.CurrentTX)
-								}
 								return p
 							})
 							.sort((a, b) => a.ExpiresAt - b.ExpiresAt)
 						$role = data.Role
-
-						const tempServers: Record<string, ServerSpecificInfo> = {}
-
-						for (const peer of peers) {
-							for (const ssi of peer.ServerSpecificInfo) {
-								if (tempServers[ssi.Address]) {
-									tempServers[ssi.Address].CurrentRX += ssi.CurrentRX
-									tempServers[ssi.Address].CurrentTX += ssi.CurrentTX
-								} else {
-									tempServers[ssi.Address] = {
-										Address: ssi.Address,
-										CurrentTX: ssi.CurrentTX,
-										CurrentRX: ssi.CurrentRX,
-										LastHandshakeTime: '',
-										Endpoint: ''
-									}
-								}
-							}
-						}
-
-						servers = Object.values<ServerSpecificInfo>(tempServers)
 					} else {
 						console.log(res.statusText)
 					}
@@ -96,6 +67,7 @@
 					res = await fetch('/api/peers/' + encodeURIComponent(currentPeer.ID))
 					if (res.status === 200) {
 						if (currentPeer) currentPeer = await res.json()
+						$loading = false
 					} else {
 						console.log(res.statusText)
 					}
@@ -227,14 +199,41 @@
 		return new File([u8arr], filename, { type })
 	}
 
+	function addPeerInfoToCanvas(id: string) {
+		if (currentPeer === null) return
+		const canvasTemp = document.getElementById('canvas')
+		if (canvasTemp === null) return
+		const canvas = canvasTemp as HTMLCanvasElement
+		const ctx = canvas.getContext('2d')
+		if (ctx === null) return
+		ctx.font = '16px Roboto Mono'
+		ctx.fillStyle = '#023020'
+		const nameWidth = ctx.measureText(currentPeer.Name).width
+		const allowedIPsWidth = ctx.measureText(currentPeer.AllowedIPs).width
+		const w = document.body.clientWidth - 32 < 768 ? document.body.clientWidth - 32 : 768 - 32
+		ctx.fillText(currentPeer.Name, Math.round(w / 2 - nameWidth / 2), 16)
+		ctx.fillText(currentPeer.AllowedIPs, Math.round(w / 2 - allowedIPsWidth / 2), w - 4)
+	}
+
 	async function sharePeer(withTelegramBotLink = false, noImage = false) {
 		try {
 			error = ''
 			if (!currentPeer) return
-			const dataurl = await qr.toDataURL(document.createElement('canvas'), config, {
+			const canvas = document.createElement('canvas')
+			await qr.toCanvas(canvas, config, {
 				width: 720,
 				color: { dark: '#023020' }
 			})
+			const ctx = canvas.getContext('2d')
+			if (ctx === null) return
+			ctx.font = '16px Roboto Mono'
+			ctx.fillStyle = '#023020'
+			const nameWidth = ctx.measureText(currentPeer.Name).width
+			const allowedIPsWidth = ctx.measureText(currentPeer.AllowedIPs).width
+			const w = document.body.clientWidth - 32 < 768 ? document.body.clientWidth - 32 : 768 - 32
+			ctx.fillText(currentPeer.Name, Math.round(w / 2 - nameWidth / 2), 16)
+			ctx.fillText(currentPeer.AllowedIPs, Math.round(w / 2 - allowedIPsWidth / 2), w - 4)
+			const dataurl = canvas.toDataURL()
 			await navigator.share({
 				title: currentPeer?.Name,
 				files: noImage
@@ -336,43 +335,6 @@
 			</button>
 		{/if}
 	</div>
-	{#if $role === 'admin' && $search.length === 0}
-		<div
-			class="mb-2 overflow-hidden rounded border border-neutral-800 px-4 py-2 transition-all {showSSI
-				? 'max-h-[1000px]'
-				: 'max-h-10'}"
-		>
-			<button on:click={() => (showSSI = !showSSI)} class="flex items-center">
-				<span class="material-symbols-outlined mr-1 transition-all {showSSI && 'rotate-180'}">
-					arrow_drop_down
-				</span>
-				<span>{showSSI ? 'HIDE' : 'SHOW'} SSIs</span>
-			</button>
-			<div class="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-				{#each servers as server}
-					<div class="rounded border border-neutral-800 px-4 py-2">
-						<div class="font-bold">
-							{server?.Address}
-						</div>
-						<div class="flex">
-							<div class="mr-2 flex">
-								<span class="material-symbols-outlined mr-1"> arrow_upward </span>
-								<div>
-									{formatBytes(server?.CurrentTX)}
-								</div>
-							</div>
-							<div class="flex">
-								<span class="material-symbols-outlined mr-1"> arrow_downward </span>
-								<div>
-									{formatBytes(server?.CurrentRX)}
-								</div>
-							</div>
-						</div>
-					</div>
-				{/each}
-			</div>
-		</div>
-	{/if}
 	{#if $search.length === 0}
 		<div
 			class="mb-2 flex items-center rounded border border-neutral-800 px-4 py-2 text-xs md:text-sm"
@@ -614,11 +576,13 @@
 			<select
 				disabled={$role === 'user'}
 				bind:value={selectedEndpoint}
-				on:change={() =>
-					qr.toCanvas(document.getElementById('canvas'), config, {
+				on:change={async () => {
+					await qr.toCanvas(document.getElementById('canvas'), config, {
 						width: document.body.clientWidth - 32 < 768 ? document.body.clientWidth - 32 : 768 - 32,
 						color: { dark: '#023020' }
-					})}
+					})
+					addPeerInfoToCanvas('id')
+				}}
 				class="mb-4 w-full max-w-lg rounded border border-neutral-800 bg-neutral-900 px-4 py-2 outline-none"
 			>
 				{#each endpoints as e}
@@ -736,6 +700,7 @@
 						on:click={async () => {
 							currentPeer = peer
 							newName = peer.Name
+							$loading = true
 							newAllowedUsage = peer.AllowedUsage / 1024000000
 							newExpiresAt = +((peer.ExpiresAt - Date.now()) / 1000 / 3600 / 24).toFixed(2)
 							newPreferredEndpoint = peer.PreferredEndpoint
@@ -743,11 +708,13 @@
 							while (!document.getElementById('canvas')) {
 								await sleep(100)
 							}
-							qr.toCanvas(document.getElementById('canvas'), config, {
+							await qr.toCanvas(document.getElementById('canvas'), config, {
 								width:
 									document.body.clientWidth - 32 < 768 ? document.body.clientWidth - 32 : 768 - 32,
-								color: { dark: '#023020' }
+								color: { dark: '#023020' },
+								margin: 4
 							})
+							addPeerInfoToCanvas('id')
 						}}
 						class="{peer.Disabled && peer.TotalRX + peer.TotalTX >= peer.AllowedUsage
 							? 'bg-yellow-700 hover:bg-yellow-800'
