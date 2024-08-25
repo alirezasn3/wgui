@@ -20,7 +20,7 @@ import (
 
 func GetPeers(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
@@ -44,12 +44,12 @@ func GetPeers(ctx echo.Context) error {
 			})
 		}
 	} else {
-		// return only group's peers if user is not admin
-		group := strings.Split(peer.Name, "-")[0]
+		// return only neighbours if user is not admin
+		neighboursPrefix := strings.Split(peer.Name, "-")[0]
 		peers.mu.RLock()
 		defer peers.mu.RUnlock()
 		for _, p := range peers.peers {
-			if strings.HasPrefix(p.Name, group+"-") {
+			if strings.HasPrefix(p.Name, neighboursPrefix+"-") {
 				pbPeers = append(pbPeers, &PBPeer{
 					ID:                 p.ID,
 					Name:               p.Name,
@@ -74,12 +74,12 @@ func GetPeers(ctx echo.Context) error {
 
 func GetPeer(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
 
-	group := strings.Split(peer.Name, "-")[0]
+	neighboursPrefix := strings.Split(peer.Name, "-")[0]
 
 	// decode uri
 	id, err := url.QueryUnescape(ctx.Param("id"))
@@ -93,9 +93,9 @@ func GetPeer(ctx echo.Context) error {
 		return ctx.NoContent(404)
 	}
 
-	// check if the requested peer is in the same group as the user
+	// check if the requested peer is a neighbour of the user
 	if peer.Role != "admin" {
-		if !strings.HasPrefix(p.Name, group+"-") {
+		if !strings.HasPrefix(p.Name, neighboursPrefix+"-") {
 			return ctx.NoContent(403)
 		}
 	}
@@ -106,12 +106,12 @@ func GetPeer(ctx echo.Context) error {
 
 func PostPeers(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
 
-	group := strings.Split(peer.Name, "-")[0]
+	neighboursPrefix := strings.Split(peer.Name, "-")[0]
 
 	if peer.Role == "user" {
 		return ctx.NoContent(403)
@@ -124,9 +124,9 @@ func PostPeers(ctx echo.Context) error {
 		return ctx.String(400, err.Error())
 	}
 
-	// check if the requested peer is in the same group as the user
+	// check if the requested peer is a neighbour of the user
 	if peer.Role == "distributor" {
-		if !strings.HasPrefix(data.Name, group+"-") {
+		if !strings.HasPrefix(data.Name, neighboursPrefix+"-") {
 			return ctx.NoContent(403)
 		}
 	}
@@ -197,7 +197,7 @@ findIP:
 	peers.peers[data.PublicKey] = &data
 
 	// add peer to database
-	_, err = collection.InsertOne(context.TODO(), data)
+	_, err = peersCollection.InsertOne(context.TODO(), data)
 	if err != nil {
 		// Check if the error is a duplicate key error
 		if writeException, ok := err.(mongo.WriteException); ok {
@@ -234,12 +234,12 @@ findIP:
 
 func DeletePeers(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
 
-	group := strings.Split(peer.Name, "-")[0]
+	neighboursPrefix := strings.Split(peer.Name, "-")[0]
 
 	if peer.Role == "user" {
 		return ctx.NoContent(403)
@@ -257,9 +257,9 @@ func DeletePeers(ctx echo.Context) error {
 		return ctx.NoContent(400)
 	}
 
-	// check if the requested peer is in the same group as the user
+	// check if the requested peer is a neighbour the user
 	if peer.Role == "distributor" {
-		if !strings.HasPrefix(p.Name, group+"-") {
+		if !strings.HasPrefix(p.Name, neighboursPrefix+"-") {
 			return ctx.NoContent(403)
 		}
 	}
@@ -282,7 +282,7 @@ func DeletePeers(ctx echo.Context) error {
 	}
 
 	// delete peer from database
-	_, err = collection.DeleteOne(context.TODO(), bson.M{"name": p.Name})
+	_, err = peersCollection.DeleteOne(context.TODO(), bson.M{"name": p.Name})
 	if err != nil {
 		logger.Error(err.Error(), slog.String("peer", p.Name))
 		return ctx.String(500, err.Error())
@@ -300,7 +300,7 @@ func DeletePeers(ctx echo.Context) error {
 
 func PatchPeers(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
@@ -321,11 +321,11 @@ func PatchPeers(ctx echo.Context) error {
 		return ctx.NoContent(400)
 	}
 
-	group := strings.Split(peer.Name, "-")[0]
+	neighboursPrefix := strings.Split(peer.Name, "-")[0]
 
-	// check if the requested peer is in the same group as the user
+	// check if the requested peer is a neighbour of the user
 	if peer.Role == "distributor" {
-		if !strings.HasPrefix(p.Name, group+"-") {
+		if !strings.HasPrefix(p.Name, neighboursPrefix+"-") {
 			return ctx.NoContent(403)
 		}
 	}
@@ -415,7 +415,7 @@ func PatchPeers(ctx echo.Context) error {
 
 	// update database
 	if len(updates) > 0 {
-		_, err := collection.BulkWrite(context.TODO(), updates, &options.BulkWriteOptions{})
+		_, err := peersCollection.BulkWrite(context.TODO(), updates, &options.BulkWriteOptions{})
 		if err != nil {
 			logger.Error(err.Error(), slog.String("peer", p.Name))
 			return ctx.String(500, err.Error())
@@ -427,7 +427,7 @@ func PatchPeers(ctx echo.Context) error {
 
 func PutPeers(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
@@ -448,16 +448,16 @@ func PutPeers(ctx echo.Context) error {
 		return ctx.NoContent(400)
 	}
 
-	group := strings.Split(peer.Name, "-")[0]
+	neighboursPrefix := strings.Split(peer.Name, "-")[0]
 
-	// check if the requested peer is in the same group as the user
+	// check if the requested peer is a neighbour of the user
 	if peer.Role == "distributor" {
-		if !strings.HasPrefix(p.Name, group+"-") {
+		if !strings.HasPrefix(p.Name, neighboursPrefix+"-") {
 			return ctx.NoContent(403)
 		}
 	}
 
-	_, err = collection.UpdateByID(context.TODO(), p.ID, bson.M{"$set": bson.M{
+	_, err = peersCollection.UpdateByID(context.TODO(), p.ID, bson.M{"$set": bson.M{
 		"totalTX": int64(0), "totalRX": int64(0),
 	}})
 	if err != nil {
@@ -479,7 +479,7 @@ func GetConfig(ctx echo.Context) error {
 
 func GetMe(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
@@ -492,7 +492,7 @@ func GetMe(ctx echo.Context) error {
 
 func GetLogs(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
@@ -502,7 +502,7 @@ func GetLogs(ctx echo.Context) error {
 	}
 
 	var logs []Log
-	cursor, err := ioWriter.Collection.Find(context.Background(), bson.M{})
+	cursor, err := ioWriter.PeersCollection.Find(context.Background(), bson.M{})
 	if err != nil {
 		logger.Error(err.Error())
 		return ctx.String(500, err.Error())

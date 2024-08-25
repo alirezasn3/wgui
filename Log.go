@@ -20,8 +20,8 @@ type Log struct {
 }
 
 type CustomWriter struct {
-	W          io.Writer
-	Collection *mongo.Collection
+	W               io.Writer
+	PeersCollection *mongo.Collection
 }
 
 func (e CustomWriter) Write(p []byte) (int, error) {
@@ -36,7 +36,7 @@ func (e CustomWriter) Write(p []byte) (int, error) {
 		// logs will be removed from db after 2 days
 		l.ExpireAt = time.Now().Add(time.Hour * 48)
 
-		_, err = e.Collection.InsertOne(context.TODO(), l)
+		_, err = e.PeersCollection.InsertOne(context.TODO(), l)
 		if err != nil {
 			fmt.Println(err)
 		}
