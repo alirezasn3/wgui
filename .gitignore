@@ -1,1 +1,4 @@
 config.json
+certs/
+wgui
+wgui.exe
