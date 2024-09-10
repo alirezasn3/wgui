@@ -56,31 +56,32 @@
 			>
 		</div>
 	{/if}
-	<nav
-		class="flex h-16 items-center justify-between border-b border-neutral-800 bg-neutral-950 px-4"
-	>
-		<div class="text-lg font-bold">WGUI</div>
-		<div class="max-md:hidden">
-			<a
-				href="/peers/all"
-				class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
-				>PEERS</a
-			>
-			<a
-				href="/groups/all"
-				class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
-				>GROUPS</a
-			>
-			<a
-				href="/logs"
-				class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
-				>LOGS</a
-			>
-		</div>
-		<button on:click={() => (showMenu = true)} class="relative md:hidden">
-			<span class="material-symbols-outlined"> menu_open </span>
-		</button>
-	</nav>
+	{#if $role !== 'user'}<nav
+			class="flex h-16 items-center justify-between border-b border-neutral-800 bg-neutral-950 px-4"
+		>
+			<div class="text-lg font-bold">WGUI</div>
+			<div class="max-md:hidden">
+				<a
+					href="/peers/all"
+					class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
+					>PEERS</a
+				>
+				<a
+					href="/groups/all"
+					class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
+					>GROUPS</a
+				>
+				<a
+					href="/logs"
+					class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
+					>LOGS</a
+				>
+			</div>
+			<button on:click={() => (showMenu = true)} class="relative md:hidden">
+				<span class="material-symbols-outlined"> menu_open </span>
+			</button>
+		</nav>
+	{/if}
 	{#key data.url}
 		<div
 			in:fade={{ duration: 500, delay: 500 }}

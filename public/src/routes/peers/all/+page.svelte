@@ -106,7 +106,7 @@
 {/if}
 
 <div class="w-full max-w-full overflow-x-auto bg-neutral-950">
-	{#if $search.length === 0 && !$loading}
+	{#if $search.length === 0 && !$loading && $role != 'user'}
 		<a
 			href="/peers/create"
 			class="mb-4 block w-fit rounded bg-neutral-50 px-4 py-2 text-neutral-950">NEW PEER</a
