@@ -12,6 +12,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
@@ -20,7 +21,7 @@ import (
 
 func GetPeers(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
@@ -44,12 +45,12 @@ func GetPeers(ctx echo.Context) error {
 			})
 		}
 	} else {
-		// return only group's peers if user is not admin
-		group := strings.Split(peer.Name, "-")[0]
+		// return only neighbours if user is not admin
+		neighboursPrefix := strings.Split(peer.Name, "-")[0]
 		peers.mu.RLock()
 		defer peers.mu.RUnlock()
 		for _, p := range peers.peers {
-			if strings.HasPrefix(p.Name, group+"-") {
+			if strings.HasPrefix(p.Name, neighboursPrefix+"-") {
 				pbPeers = append(pbPeers, &PBPeer{
 					ID:                 p.ID,
 					Name:               p.Name,
@@ -72,14 +73,43 @@ func GetPeers(ctx echo.Context) error {
 	return ctx.Blob(200, "application/x-protobuf", b)
 }
 
+func GetGroups(ctx echo.Context) error {
+	var peer Peer
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+	groups := []*Group{}
+	if peer.Role == "admin" {
+		cursor, err := groupsCollection.Find(context.TODO(), bson.M{})
+		if err != nil {
+			return ctx.String(500, err.Error())
+		}
+		fmt.Println(4)
+		if err = cursor.All(context.TODO(), &groups); err != nil {
+			return ctx.String(500, err.Error())
+		}
+	} else {
+		cursor, err := groupsCollection.Find(context.TODO(), bson.M{"ownerID": peer.ID})
+		if err != nil {
+			return ctx.String(500, err.Error())
+		}
+		if err = cursor.All(context.TODO(), &groups); err != nil {
+			return ctx.String(500, err.Error())
+		}
+	}
+
+	return ctx.JSON(200, groups)
+}
+
 func GetPeer(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
 
-	group := strings.Split(peer.Name, "-")[0]
+	neighboursPrefix := strings.Split(peer.Name, "-")[0]
 
 	// decode uri
 	id, err := url.QueryUnescape(ctx.Param("id"))
@@ -93,9 +123,9 @@ func GetPeer(ctx echo.Context) error {
 		return ctx.NoContent(404)
 	}
 
-	// check if the requested peer is in the same group as the user
+	// check if the requested peer is a neighbour of the user
 	if peer.Role != "admin" {
-		if !strings.HasPrefix(p.Name, group+"-") {
+		if !strings.HasPrefix(p.Name, neighboursPrefix+"-") {
 			return ctx.NoContent(403)
 		}
 	}
@@ -104,14 +134,45 @@ func GetPeer(ctx echo.Context) error {
 	return ctx.JSON(200, p)
 }
 
-func PostPeers(ctx echo.Context) error {
+func GetGroup(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
 
-	group := strings.Split(peer.Name, "-")[0]
+	// parse id
+	objectID, err := primitive.ObjectIDFromHex(ctx.Param("id"))
+	if err != nil {
+		return ctx.NoContent(400)
+	}
+
+	// check if group exists
+	var group Group
+	err = groupsCollection.FindOne(context.TODO(), bson.M{"_id": objectID}).Decode(&group)
+	if err != nil {
+		return ctx.NoContent(404)
+	}
+
+	// check read rights
+	if peer.Role != "admin" {
+		if group.OwnerID != peer.ID {
+			return ctx.NoContent(403)
+		}
+	}
+
+	// return peer
+	return ctx.JSON(200, group)
+}
+
+func PostPeers(ctx echo.Context) error {
+	var peer Peer
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+
+	neighboursPrefix := strings.Split(peer.Name, "-")[0]
 
 	if peer.Role == "user" {
 		return ctx.NoContent(403)
@@ -124,9 +185,9 @@ func PostPeers(ctx echo.Context) error {
 		return ctx.String(400, err.Error())
 	}
 
-	// check if the requested peer is in the same group as the user
+	// check if the requested peer is a neighbour of the user
 	if peer.Role == "distributor" {
-		if !strings.HasPrefix(data.Name, group+"-") {
+		if !strings.HasPrefix(data.Name, neighboursPrefix+"-") {
 			return ctx.NoContent(403)
 		}
 	}
@@ -197,7 +258,7 @@ findIP:
 	peers.peers[data.PublicKey] = &data
 
 	// add peer to database
-	_, err = collection.InsertOne(context.TODO(), data)
+	_, err = peersCollection.InsertOne(context.TODO(), data)
 	if err != nil {
 		// Check if the error is a duplicate key error
 		if writeException, ok := err.(mongo.WriteException); ok {
@@ -232,14 +293,68 @@ findIP:
 	return ctx.String(201, data.PublicKey)
 }
 
-func DeletePeers(ctx echo.Context) error {
+func PostGroups(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
 
-	group := strings.Split(peer.Name, "-")[0]
+	neighboursPrefix := strings.Split(peer.Name, "-")[0]
+
+	if peer.Role == "user" {
+		return ctx.NoContent(403)
+	}
+
+	// get group info from request body
+	var data Group
+	err = json.NewDecoder(ctx.Request().Body).Decode(&data)
+	if err != nil {
+		return ctx.String(400, err.Error())
+	}
+
+	// check if the requested peer is a neighbour of the user
+	if peer.Role == "distributor" {
+		if !strings.HasPrefix(data.Name, neighboursPrefix+"-") {
+			return ctx.NoContent(403)
+		}
+	}
+
+	// add group to database
+	data.ID = primitive.NewObjectID()
+	data.PeerIDs = []string{}
+	insertRes, err := groupsCollection.InsertOne(context.TODO(), data)
+	data.Disabled = false
+	data.TotalRX = 0
+	data.TotalTX = 0
+	data.OwnerID = peer.ID
+	if err != nil {
+		// Check if the error is a duplicate key error
+		if writeException, ok := err.(mongo.WriteException); ok {
+			for _, writeError := range writeException.WriteErrors {
+				if writeError.Code == 11000 {
+					return ctx.String(400, "duplicate name")
+				}
+			}
+		} else {
+			logger.Error(err.Error(), slog.String("group", data.Name))
+			return ctx.String(500, err.Error())
+		}
+	}
+
+	logger.Info("Group Created", slog.String("group", data.Name))
+
+	return ctx.String(201, insertRes.InsertedID.(primitive.ObjectID).Hex())
+}
+
+func DeletePeers(ctx echo.Context) error {
+	var peer Peer
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+
+	neighboursPrefix := strings.Split(peer.Name, "-")[0]
 
 	if peer.Role == "user" {
 		return ctx.NoContent(403)
@@ -257,9 +372,9 @@ func DeletePeers(ctx echo.Context) error {
 		return ctx.NoContent(400)
 	}
 
-	// check if the requested peer is in the same group as the user
+	// check if the requested peer is a neighbour the user
 	if peer.Role == "distributor" {
-		if !strings.HasPrefix(p.Name, group+"-") {
+		if !strings.HasPrefix(p.Name, neighboursPrefix+"-") {
 			return ctx.NoContent(403)
 		}
 	}
@@ -282,9 +397,14 @@ func DeletePeers(ctx echo.Context) error {
 	}
 
 	// delete peer from database
-	_, err = collection.DeleteOne(context.TODO(), bson.M{"name": p.Name})
+	_, err = peersCollection.DeleteOne(context.TODO(), bson.M{"name": p.Name})
 	if err != nil {
 		logger.Error(err.Error(), slog.String("peer", p.Name))
+		return ctx.String(500, err.Error())
+	}
+	_, err = groupsCollection.UpdateByID(context.TODO(), p.GroupID, bson.M{"$pull": bson.M{"peerIDs": p.ID}})
+	if err != nil {
+		logger.Error(err.Error(), slog.String("peer", peer.Name))
 		return ctx.String(500, err.Error())
 	}
 
@@ -298,9 +418,101 @@ func DeletePeers(ctx echo.Context) error {
 	return ctx.NoContent(200)
 }
 
+func DeleteGroup(ctx echo.Context) error {
+	var peer Peer
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+
+	if peer.Role == "user" {
+		return ctx.NoContent(403)
+	}
+
+	// parse id
+	objectID, err := primitive.ObjectIDFromHex(ctx.Param("id"))
+	if err != nil {
+		return ctx.NoContent(400)
+	}
+
+	// check if group exists
+	var group Group
+	err = groupsCollection.FindOne(context.TODO(), bson.M{"_id": objectID}).Decode(&group)
+	if err != nil {
+		return ctx.NoContent(404)
+	}
+
+	// check read rights
+	if peer.Role != "admin" && group.OwnerID != peer.ID {
+		if group.OwnerID != peer.ID {
+			return ctx.NoContent(403)
+		}
+	}
+
+	// delete group from database
+	_, err = groupsCollection.DeleteOne(context.TODO(), bson.M{"_id": group.ID})
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+
+	return ctx.NoContent(200)
+}
+
+func DeletePeerFromGroup(ctx echo.Context) error {
+	var peer Peer
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+
+	if peer.Role == "user" {
+		return ctx.NoContent(403)
+	}
+
+	// parse group id
+	groupObjectID, err := primitive.ObjectIDFromHex(ctx.Param("groupID"))
+	if err != nil {
+		return ctx.NoContent(400)
+	}
+
+	// check if group exists
+	var group Group
+	err = groupsCollection.FindOne(context.TODO(), bson.M{"_id": groupObjectID}).Decode(&group)
+	if err != nil {
+		return ctx.NoContent(404)
+	}
+
+	// check read rights
+	if peer.Role != "admin" && group.OwnerID != peer.ID {
+		if group.OwnerID != peer.ID {
+			return ctx.NoContent(403)
+		}
+	}
+
+	// parse peer id
+	peerID, err := url.QueryUnescape(ctx.Param("peerID"))
+	if err != nil {
+		return ctx.NoContent(400)
+	}
+
+	// delete peer from group
+	_, err = peersCollection.UpdateByID(context.TODO(), peerID, bson.M{"$set": bson.M{"groupID": primitive.NilObjectID}})
+	if err != nil {
+		logger.Error(err.Error(), slog.String("peer", peer.Name))
+		return ctx.String(500, err.Error())
+	}
+	_, err = groupsCollection.UpdateByID(context.TODO(), groupObjectID, bson.M{"$pull": bson.M{"peerIDs": peerID}})
+	if err != nil {
+		logger.Error(err.Error(), slog.String("peer", peer.Name))
+		return ctx.String(500, err.Error())
+	}
+
+	return ctx.NoContent(200)
+}
+
 func PatchPeers(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
@@ -321,11 +533,11 @@ func PatchPeers(ctx echo.Context) error {
 		return ctx.NoContent(400)
 	}
 
-	group := strings.Split(peer.Name, "-")[0]
+	neighboursPrefix := strings.Split(peer.Name, "-")[0]
 
-	// check if the requested peer is in the same group as the user
+	// check if the requested peer is a neighbour of the user
 	if peer.Role == "distributor" {
-		if !strings.HasPrefix(p.Name, group+"-") {
+		if !strings.HasPrefix(p.Name, neighboursPrefix+"-") {
 			return ctx.NoContent(403)
 		}
 	}
@@ -415,7 +627,7 @@ func PatchPeers(ctx echo.Context) error {
 
 	// update database
 	if len(updates) > 0 {
-		_, err := collection.BulkWrite(context.TODO(), updates, &options.BulkWriteOptions{})
+		_, err := peersCollection.BulkWrite(context.TODO(), updates, &options.BulkWriteOptions{})
 		if err != nil {
 			logger.Error(err.Error(), slog.String("peer", p.Name))
 			return ctx.String(500, err.Error())
@@ -425,9 +637,107 @@ func PatchPeers(ctx echo.Context) error {
 	return ctx.NoContent(200)
 }
 
+func PatchGroups(ctx echo.Context) error {
+	var peer Peer
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+
+	if peer.Role == "user" {
+		return ctx.NoContent(403)
+	}
+
+	// parse id
+	objectID, err := primitive.ObjectIDFromHex(ctx.Param("id"))
+	if err != nil {
+		return ctx.NoContent(400)
+	}
+
+	// check if group exists
+	var group Group
+	err = groupsCollection.FindOne(context.TODO(), bson.M{"_id": objectID}).Decode(&group)
+	if err != nil {
+		return ctx.NoContent(404)
+	}
+
+	// check read rights
+	if peer.Role != "admin" && group.OwnerID != peer.ID {
+		if group.OwnerID != peer.ID {
+			return ctx.NoContent(403)
+		}
+	}
+
+	data := make(map[string]interface{})
+	err = json.NewDecoder(ctx.Request().Body).Decode(&data)
+	if err != nil {
+		return ctx.String(400, err.Error())
+	}
+
+	var groupUpdates []mongo.WriteModel
+	var peerUpdates []mongo.WriteModel
+
+	if allowedUsage, ok := data["allowedUsage"].(float64); ok {
+		groupUpdate := mongo.NewUpdateOneModel()
+		groupUpdate.SetFilter(bson.M{"_id": group.ID})
+		groupUpdate.SetUpdate(bson.M{"$set": bson.M{"allowedUsage": int64(allowedUsage)}})
+		groupUpdates = append(groupUpdates, groupUpdate)
+		for _, peerID := range group.PeerIDs {
+			peerUpdate := mongo.NewUpdateOneModel()
+			peerUpdate.SetFilter(bson.M{"_id": peerID})
+			peerUpdate.SetUpdate(bson.M{"$set": bson.M{"allowedUsage": int64(allowedUsage)}})
+			peerUpdates = append(peerUpdates, peerUpdate)
+			peers.mu.Lock()
+			peers.peers[peerID].AllowedUsage = int64(allowedUsage)
+			peers.mu.Unlock()
+		}
+	}
+
+	if expiresAt, ok := data["expiresAt"].(float64); ok {
+		groupUpdate := mongo.NewUpdateOneModel()
+		groupUpdate.SetFilter(bson.M{"_id": group.ID})
+		groupUpdate.SetUpdate(bson.M{"$set": bson.M{"expiresAt": int64(expiresAt)}})
+		groupUpdates = append(groupUpdates, groupUpdate)
+		for _, peerID := range group.PeerIDs {
+			peerUpdate := mongo.NewUpdateOneModel()
+			peerUpdate.SetFilter(bson.M{"_id": peerID})
+			peerUpdate.SetUpdate(bson.M{"$set": bson.M{"expiresAt": int64(expiresAt)}})
+			peerUpdates = append(peerUpdates, peerUpdate)
+			peers.mu.Lock()
+			peers.peers[peerID].ExpiresAt = int64(expiresAt)
+			peers.mu.Unlock()
+		}
+	}
+
+	if name, ok := data["name"].(string); ok {
+		groupUpdate := mongo.NewUpdateOneModel()
+		groupUpdate.SetFilter(bson.M{"_id": group.ID})
+		groupUpdate.SetUpdate(bson.M{"$set": bson.M{"name": name}})
+		groupUpdates = append(groupUpdates, groupUpdate)
+	}
+
+	// update database
+	if len(groupUpdates) > 0 {
+		_, err := groupsCollection.BulkWrite(context.TODO(), groupUpdates, &options.BulkWriteOptions{})
+		if err != nil {
+			logger.Error(err.Error(), slog.String("peer", peer.Name))
+			return ctx.String(500, err.Error())
+		}
+	}
+	if len(peerUpdates) > 0 {
+		_, err := peersCollection.BulkWrite(context.TODO(), peerUpdates, &options.BulkWriteOptions{})
+		if err != nil {
+			logger.Error(err.Error(), slog.String("peer", peer.Name))
+			return ctx.String(500, err.Error())
+		}
+	}
+
+	return ctx.NoContent(200)
+}
+
 func PutPeers(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
@@ -448,16 +758,16 @@ func PutPeers(ctx echo.Context) error {
 		return ctx.NoContent(400)
 	}
 
-	group := strings.Split(peer.Name, "-")[0]
+	neighboursPrefix := strings.Split(peer.Name, "-")[0]
 
-	// check if the requested peer is in the same group as the user
+	// check if the requested peer is a neighbour of the user
 	if peer.Role == "distributor" {
-		if !strings.HasPrefix(p.Name, group+"-") {
+		if !strings.HasPrefix(p.Name, neighboursPrefix+"-") {
 			return ctx.NoContent(403)
 		}
 	}
 
-	_, err = collection.UpdateByID(context.TODO(), p.ID, bson.M{"$set": bson.M{
+	_, err = peersCollection.UpdateByID(context.TODO(), p.ID, bson.M{"$set": bson.M{
 		"totalTX": int64(0), "totalRX": int64(0),
 	}})
 	if err != nil {
@@ -470,7 +780,108 @@ func PutPeers(ctx echo.Context) error {
 	p.TotalTX = 0
 	p.TotalRX = 0
 
-	return nil
+	return ctx.NoContent(200)
+}
+
+func PutGroups(ctx echo.Context) error {
+	var peer Peer
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+
+	if peer.Role == "user" {
+		return ctx.NoContent(403)
+	}
+
+	// parse id
+	objectID, err := primitive.ObjectIDFromHex(ctx.Param("id"))
+	if err != nil {
+		return ctx.NoContent(400)
+	}
+
+	// check if group exists
+	var group Group
+	err = groupsCollection.FindOne(context.TODO(), bson.M{"_id": objectID}).Decode(&group)
+	if err != nil {
+		return ctx.NoContent(404)
+	}
+
+	// check read rights
+	if peer.Role != "admin" && group.OwnerID != peer.ID {
+		if group.OwnerID != peer.ID {
+			return ctx.NoContent(403)
+		}
+	}
+
+	_, err = groupsCollection.UpdateByID(context.TODO(), group.ID, bson.M{"$set": bson.M{
+		"totalTX": int64(0), "totalRX": int64(0),
+	}})
+	if err != nil {
+		logger.Error(err.Error(), slog.String("peer", peer.Name))
+		return ctx.String(500, err.Error())
+	}
+
+	for _, peerID := range group.PeerIDs {
+		_, err = peersCollection.UpdateByID(context.TODO(), peerID, bson.M{"$set": bson.M{
+			"totalTX": int64(0), "totalRX": int64(0), "allowedUsage": group.AllowedUsage,
+		}})
+		if err != nil {
+			logger.Error(err.Error(), slog.String("peer", peer.Name))
+			return ctx.String(500, err.Error())
+		}
+	}
+
+	return ctx.NoContent(200)
+}
+
+func PutPeerToGroup(ctx echo.Context) error {
+	var peer Peer
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+
+	// parse group id
+	groupObjectID, err := primitive.ObjectIDFromHex(ctx.Param("groupID"))
+	if err != nil {
+		return ctx.NoContent(400)
+	}
+
+	// parse target peer id
+	peerID, err := url.QueryUnescape(ctx.Param("peerID"))
+	if err != nil {
+		return ctx.NoContent(400)
+	}
+
+	// check if group exists
+	var group Group
+	err = groupsCollection.FindOne(context.TODO(), bson.M{"_id": groupObjectID}).Decode(&group)
+	if err != nil {
+		return ctx.NoContent(404)
+	}
+
+	// check read rights
+	if peer.Role != "admin" {
+		if group.OwnerID != peer.ID {
+			return ctx.NoContent(403)
+		}
+	}
+
+	// add peer to group
+	_, err = groupsCollection.UpdateByID(context.TODO(), groupObjectID, bson.M{"$push": bson.M{"peerIDs": peerID}})
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+
+	// add group id to peer
+	_, err = peersCollection.UpdateByID(context.TODO(), peerID, bson.M{"$set": bson.M{"groupID": groupObjectID, "totalTX": int64(0), "totalRX": int64(0), "allowedUsage": group.AllowedUsage, "expiresAt": group.ExpiresAt}})
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+
+	// return peer
+	return ctx.NoContent(200)
 }
 
 func GetConfig(ctx echo.Context) error {
@@ -479,7 +890,7 @@ func GetConfig(ctx echo.Context) error {
 
 func GetMe(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
@@ -492,7 +903,7 @@ func GetMe(ctx echo.Context) error {
 
 func GetLogs(ctx echo.Context) error {
 	var peer Peer
-	err := collection.FindOne(context.Background(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
@@ -502,7 +913,7 @@ func GetLogs(ctx echo.Context) error {
 	}
 
 	var logs []Log
-	cursor, err := ioWriter.Collection.Find(context.Background(), bson.M{})
+	cursor, err := ioWriter.LogsCollection.Find(context.TODO(), bson.M{})
 	if err != nil {
 		logger.Error(err.Error())
 		return ctx.String(500, err.Error())

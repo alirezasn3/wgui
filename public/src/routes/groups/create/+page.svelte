@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { goto } from '$app/navigation'
 	import { getContext, onMount } from 'svelte'
 	import type { Writable } from 'svelte/store'
 
@@ -7,15 +8,12 @@
 	let name = ''
 	let allowedUsage = 30
 	let expiresAt = 30
-	let preferredEndpoint = ''
 	let error = ''
-	let role = 'user'
 	let userRole = 'user'
 	let prefix = ''
 
 	onMount(async () => {
 		try {
-			loading.set(true)
 			const res = await fetch('/api/me')
 			const data = await res.json()
 			userRole = data.role
@@ -27,31 +25,26 @@
 		}
 	})
 
-	async function createPeer() {
+	async function createGroup() {
 		try {
 			name = name.trim()
 
 			if (name === '') return (error = 'name can not be empty')
 
-			if (userRole === 'admin' && !name.includes('-'))
-				return (error = 'name should include at least one dash')
-
 			loading.set(true)
 			error = ''
-			const res = await fetch('/api/peers', {
+			const res = await fetch('/api/groups', {
 				method: 'POST',
 				body: JSON.stringify({
 					name: userRole === 'distributor' ? prefix + '-' + name : name,
 					allowedUsage: allowedUsage * 1024000000,
-					expiresAt: Date.now() + expiresAt * 24 * 3600 * 1000,
-					preferredEndpoint: preferredEndpoint.length ? preferredEndpoint : undefined,
-					role
+					expiresAt: Date.now() + expiresAt * 24 * 3600 * 1000
 				})
 			})
 			if (res.status === 201) {
 				const id = await res.text()
-				location.assign('/?peer=' + encodeURIComponent(id))
-			} else error = res.statusText
+				await goto('/groups/?id=' + id)
+			} else error = await res.text()
 		} catch (e) {
 			console.log(e)
 			error = (e as Error).message
@@ -61,10 +54,10 @@
 	}
 </script>
 
-<div class="flex min-h-[calc(100svh-96px)] items-center justify-center">
-	<div class="flex w-full max-w-xl flex-col rounded border border-neutral-800 px-4 py-8">
-		<div class="mb-4 text-center text-3xl font-bold">Create New Peer</div>
-		<label for="name" class="mb-1">Peer Name</label>
+<div class="flex min-h-[calc(100svh-96px)] justify-center md:items-center">
+	<div class="flex w-full max-w-xl flex-col rounded border-neutral-800 md:border md:px-4 md:py-8">
+		<div class="mb-4 text-center text-3xl font-bold">Create New Group</div>
+		<label for="name" class="mb-1">Group Name</label>
 		<div class="mb-4 flex w-full">
 			{#if userRole === 'distributor'}
 				<span
@@ -81,15 +74,6 @@
 				type="text"
 				autocomplete="off"
 				placeholder="Name"
-			/>
-		</div>
-		<div class="mb-4 hidden w-full">
-			<input
-				disabled={true}
-				bind:value={preferredEndpoint}
-				class="w-full rounded border border-neutral-800 bg-neutral-950 px-4 py-2 text-lg font-bold text-neutral-50 outline-none"
-				type="text"
-				placeholder="Preferred Endpoint"
 			/>
 		</div>
 		<label for="allowed-usage" class="mb-1">Allowed Usage</label>
@@ -122,34 +106,20 @@
 				Days
 			</div>
 		</div>
-		{#if userRole === 'admin'}
-			<label for="role" class="mb-1">Role</label>
-			<div class="mb-8 flex w-full">
-				<select
-					bind:value={role}
-					class="w-full rounded border border-neutral-800 bg-neutral-900 px-4 py-2 text-lg font-bold outline-none"
-				>
-					<option value="user"> User </option>
-					<option value="distributor"> Distributor </option>
-					<option value="admin"> Admin </option>
-				</select>
-			</div>
-		{/if}
 		<div class="grid grid-cols-2 gap-2">
 			<button
-				on:click={createPeer}
+				on:click={createGroup}
 				class="rounded bg-neutral-50 py-2 text-xl font-bold text-neutral-950 transition-colors hover:bg-neutral-300"
 				>CREATE</button
 			>
 			<a
-				href="/"
+				href="/groups"
 				class="rounded bg-neutral-50 py-2 text-center text-xl font-bold text-neutral-950 transition-colors hover:bg-neutral-300"
 				>CANCEL</a
 			>
 		</div>
-
 		{#if error}
-			<div class="text-red-900">{error}</div>
+			<div class="mt-4 text-red-900">{error}</div>
 		{/if}
 	</div>
 </div>

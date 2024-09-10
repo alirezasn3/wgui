@@ -15,13 +15,14 @@ type Log struct {
 	Level         string    `json:"level" bson:"level"`
 	Message       string    `json:"msg" bson:"msg"`
 	Peer          string    `json:"peer" bson:"peer"`
+	Group         string    `json:"group" bson:"group"`
 	PublicAddress string    `json:"publicAddress" bson:"publicAddress"`
 	ExpireAt      time.Time `json:"-" bson:"expireAt"`
 }
 
 type CustomWriter struct {
-	W          io.Writer
-	Collection *mongo.Collection
+	W              io.Writer
+	LogsCollection *mongo.Collection
 }
 
 func (e CustomWriter) Write(p []byte) (int, error) {
@@ -36,7 +37,7 @@ func (e CustomWriter) Write(p []byte) (int, error) {
 		// logs will be removed from db after 2 days
 		l.ExpireAt = time.Now().Add(time.Hour * 48)
 
-		_, err = e.Collection.InsertOne(context.TODO(), l)
+		_, err = e.LogsCollection.InsertOne(context.TODO(), l)
 		if err != nil {
 			fmt.Println(err)
 		}

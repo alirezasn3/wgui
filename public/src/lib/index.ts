@@ -25,6 +25,7 @@ export interface Peer {
 	TotalRX: number
 	ServerSpecificInfo: ServerSpecificInfo[]
 	TelegramChatID: number
+	GroupID: string
 }
 
 export interface Log {
@@ -33,6 +34,18 @@ export interface Log {
 	level: string
 	msg: string
 	peer: string
+}
+
+export interface Group {
+	Name: string
+	ID: string
+	PeerIDs: string[]
+	AllowedUsage: number
+	TotalTX: number
+	TotalRX: number
+	ExpiresAt: number
+	Disabled: boolean
+	OwnerID: string
 }
 
 export interface Device {

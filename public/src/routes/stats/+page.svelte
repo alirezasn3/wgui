@@ -1,9 +1,10 @@
-<script lang="ts">
+<!-- <script lang="ts">
 	import { htmlLegendPlugin, type Peer } from '$lib'
 	import { onMount } from 'svelte'
 	import { getContext } from 'svelte'
 	import type { Writable } from 'svelte/store'
 	import Chart from 'chart.js/auto'
+	import protobuf from 'protobufjs'
 
 	const loading: Writable<boolean> = getContext('loading')
 
@@ -28,18 +29,18 @@
 
 	onMount(async () => {
 		try {
-			loading.set(true)
-
 			const res = await fetch('/api/peers')
 			if (res.status === 200) {
-				const d = await res.json()
-				const peers: Peer[] = Object.values(d.peers)
+				const pb = await protobuf.load('/Peer.proto')
+				const PBPeers = pb.lookupType('PBPeers')
+				const ab = await res.arrayBuffer()
+				const peers: Peer[] = PBPeers.decode(new Uint8Array(ab), ab.byteLength).toJSON().Peers
 				const requests = []
 				for (const peer of peers) {
-					for (const ssi of peer.serverSpecificInfo) {
-						if (ssi.endpoint === '<nil>') continue
+					for (const ssi of peer.ServerSpecificInfo) {
+						if (ssi.Endpoint === '<nil>') continue
 						requests.push(
-							'https://ipee-api.alirezasn.workers.dev/v1/info/' + ssi.endpoint.split(':')[0]
+							'https://ipee-api.alirezasn.workers.dev/v1/info/' + ssi.Endpoint.split(':')[0]
 						)
 						totalCount++
 					}
@@ -108,4 +109,6 @@
 		class="max-h-[calc(100svh-96px)] w-full max-w-3xl rounded bg-neutral-900 p-4 max-xl:mb-4 xl:mr-4"
 	></canvas>
 	<div id="legend"></div>
-</div>
+</div> -->
+
+<div></div>

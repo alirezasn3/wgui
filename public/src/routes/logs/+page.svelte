@@ -11,7 +11,6 @@
 
 	onMount(async () => {
 		try {
-			loading.set(true)
 			const res = await fetch('/api/logs')
 			if (res.status !== 200) {
 				error = res.statusText

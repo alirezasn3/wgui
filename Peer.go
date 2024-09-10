@@ -1,5 +1,7 @@
 package main
 
+import "go.mongodb.org/mongo-driver/bson/primitive"
+
 type Peer struct {
 	ID                 string                `json:"ID" bson:"_id"`
 	Role               string                `json:"Role" bson:"role"`
@@ -21,6 +23,7 @@ type Peer struct {
 	TotalRX            int64                 `json:"TotalRX" bson:"totalRX"`
 	ServerSpecificInfo []*ServerSpecificInfo `json:"ServerSpecificInfo" bson:"serverSpecificInfo"`
 	TelegramChatID     int64                 `json:"TelegramChatID" bson:"telegramChatID"`
+	GroupID            primitive.ObjectID    `json:"GroupID" bson:"groupID"`
 }
 
 type ServerSpecificInfo struct {

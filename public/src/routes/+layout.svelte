@@ -1,23 +1,38 @@
-<script>
-	import { onNavigate } from '$app/navigation'
+<script lang="ts">
+	import { beforeNavigate } from '$app/navigation'
 	import '../app.css'
-	import { setContext } from 'svelte'
+	import { onMount, setContext } from 'svelte'
 	import { writable } from 'svelte/store'
-	import { fly } from 'svelte/transition'
-	import { page } from '$app/stores'
+	import { fade, fly } from 'svelte/transition'
 
-	const loading = writable(false)
+	export let data
+
+	const loading = writable(true)
 	const search = writable('')
 	const role = writable('user')
+	const lastPageURL = writable<URL | undefined>(undefined)
 	let showMenu = false
 
-	onNavigate(() => {
+	beforeNavigate(({ from }) => {
+		lastPageURL.set(from?.url)
 		showMenu = false
+		loading.set(true)
+	})
+
+	onMount(async () => {
+		try {
+			const res = await fetch('/api/me')
+			const data = await res.json()
+			role.set(data.role)
+		} catch (error) {
+			console.log(error)
+		}
 	})
 
 	setContext('loading', loading)
 	setContext('search', search)
 	setContext('role', role)
+	setContext('lastPageURL', lastPageURL)
 </script>
 
 <div class="min-h-svh w-full bg-neutral-950 text-neutral-50">
@@ -29,68 +44,52 @@
 			<button on:click={() => (showMenu = false)} class="absolute right-0 top-0 p-4">
 				<span class="material-symbols-outlined"> close </span>
 			</button>
-			{#if $page.url.pathname !== '/'}
-				<a href="/" class="my-2 w-40 rounded bg-neutral-50 py-2 text-center text-neutral-950"
-					>PEERS</a
-				>
-			{/if}
-			{#if $page.url.pathname !== '/create-peer'}
-				<a
-					href="/create-peer"
-					class="my-2 w-40 rounded bg-neutral-50 py-2 text-center text-neutral-950">CREATE PEER</a
-				>
-			{/if}
-			{#if $page.url.pathname !== '/logs' && $role === 'admin'}
-				<a href="/logs" class="my-2 w-40 rounded bg-neutral-50 py-2 text-center text-neutral-950"
-					>LOGS</a
-				>
-			{/if}
-			{#if $page.url.pathname !== '/stats' && $role !== 'user'}
-				<a href="/stats" class="my-2 w-40 rounded bg-neutral-50 py-2 text-center text-neutral-950"
-					>STATS</a
-				>
-			{/if}
+			<a href="/peers/all" class="my-2 w-40 rounded bg-neutral-50 py-2 text-center text-neutral-950"
+				>PEERS</a
+			>
+			<a
+				href="/groups/all"
+				class="my-2 w-40 rounded bg-neutral-50 py-2 text-center text-neutral-950">GROUPS</a
+			>
+			<a href="/logs" class="my-2 w-40 rounded bg-neutral-50 py-2 text-center text-neutral-950"
+				>LOGS</a
+			>
 		</div>
 	{/if}
-	<nav class="flex h-16 items-center justify-between border-b border-neutral-800 px-4">
+	<nav
+		class="flex h-16 items-center justify-between border-b border-neutral-800 bg-neutral-950 px-4"
+	>
 		<div class="text-lg font-bold">WGUI</div>
 		<div class="max-md:hidden">
-			{#if $page.url.pathname !== '/'}
-				<a
-					href="/"
-					class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
-					>PEERS</a
-				>
-			{/if}
-			{#if $page.url.pathname !== '/create-peer'}
-				<a
-					href="/create-peer"
-					class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
-					>CREATE PEER</a
-				>
-			{/if}
-			{#if $page.url.pathname !== '/logs' && $role === 'admin'}
-				<a
-					href="/logs"
-					class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
-					>LOGS</a
-				>
-			{/if}
-			{#if $page.url.pathname !== '/stats' && $role !== 'user'}
-				<a
-					href="/stats"
-					class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
-					>STATS</a
-				>
-			{/if}
+			<a
+				href="/peers/all"
+				class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
+				>PEERS</a
+			>
+			<a
+				href="/groups/all"
+				class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
+				>GROUPS</a
+			>
+			<a
+				href="/logs"
+				class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
+				>LOGS</a
+			>
 		</div>
 		<button on:click={() => (showMenu = true)} class="relative md:hidden">
 			<span class="material-symbols-outlined"> menu_open </span>
 		</button>
 	</nav>
-	<div class="min-h-[calc(100svh-64px)] p-4">
-		<slot />
-	</div>
+	{#key data.url}
+		<div
+			in:fade={{ duration: 500, delay: 500 }}
+			out:fade={{ duration: 500 }}
+			class="min-h-[calc(100svh-64px)] p-4"
+		>
+			<slot />
+		</div>
+	{/key}
 	{#if $loading}
 		<div
 			class="fixed left-0 top-0 flex h-full w-full items-center justify-center bg-neutral-950 bg-opacity-80"

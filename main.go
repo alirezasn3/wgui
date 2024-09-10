@@ -14,9 +14,11 @@ import (
 	"sync"
 	"time"
 
+	goSystemd "github.com/alirezasn3/go-systemd"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -26,13 +28,13 @@ import (
 type Config struct {
 	MongoURI             string   `json:"mongoURI"`
 	DBName               string   `json:"dbName"`
-	CollectionName       string   `json:"collectionName"`
 	InterfaceName        string   `json:"interfaceName"`
 	InterfaceAddress     string   `json:"interfaceAddress"`
 	InterfaceAddressCIDR string   `json:"interfaceAddressCIDR"`
 	PublicAddress        string   `json:"publicAddress"`
 	Endpoints            []string `json:"endpoints"`
 	TelegramBotID        string   `json:"telegramBotID"`
+	IsMainServer         bool     `json:"isMainServer"`
 }
 
 type Peers struct {
@@ -40,18 +42,51 @@ type Peers struct {
 	mu    sync.RWMutex
 }
 
-var peers Peers                  // used to intract with peers concurrently
-var config Config                // used to store app configuration
-var wgc *wgctrl.Client           // used to interact with wireguard interfaces
-var device *wgtypes.Device       // actual wireguard interface
-var collection *mongo.Collection // peers collection on database
-var ioWriter CustomWriter        // io writer that writes to database and stdout
-var logger *slog.Logger          // custom logger that writes logs to database and stdout
-var deviceCIDR *net.IPNet        // used to check if client is in device subnet
+type Groups struct {
+	groups map[string]*Group
+	mu     sync.RWMutex
+}
+
+var groups Groups
+var peers Peers                        // used to intract with peers concurrently
+var config Config                      // used to store app configuration
+var wgc *wgctrl.Client                 // used to interact with wireguard interfaces
+var device *wgtypes.Device             // actual wireguard interface
+var peersCollection *mongo.Collection  // peers collection on database
+var groupsCollection *mongo.Collection // groups collection on database
+var ioWriter CustomWriter              // io writer that writes to database and stdout
+var logger *slog.Logger                // custom logger that writes logs to database and stdout
+var deviceCIDR *net.IPNet              // used to check if client is in device subnet
 var mongoClient *mongo.Client
 var path string
 
 func init() {
+	// check for install and uninstall commands
+	if slices.Contains(os.Args, "--install") {
+		execPath, err := os.Executable()
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+		err = goSystemd.CreateService(&goSystemd.Service{Name: "wgui", ExecStart: execPath, Restart: "on-failure", RestartSec: "3s"})
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		} else {
+			fmt.Println("wgui service created")
+			os.Exit(0)
+		}
+	} else if slices.Contains(os.Args, "--uninstall") {
+		err := goSystemd.DeleteService("wgui")
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		} else {
+			fmt.Println("wgui service deleted")
+			os.Exit(0)
+		}
+	}
+
 	// init local map
 	peers.peers = make(map[string]*Peer)
 
@@ -82,9 +117,9 @@ func init() {
 		log.Println("Connected to database")
 
 		// load mongodb peers collectoin
-		collection = mongoClient.Database(config.DBName).Collection(config.CollectionName)
+		peersCollection = mongoClient.Database(config.DBName).Collection("peers")
 
-		_, err = collection.UpdateMany(context.Background(), bson.M{}, bson.M{"$set": bson.M{"serverSpecificInfo": []ServerSpecificInfo{}}})
+		_, err = peersCollection.UpdateMany(context.Background(), bson.M{}, bson.M{"$set": bson.M{"serverSpecificInfo": []ServerSpecificInfo{}}})
 		if err != nil {
 			panic(err)
 		}
@@ -117,16 +152,25 @@ func init() {
 	log.Println("Connected to database")
 
 	// load mongodb peers collectoin
-	collection = mongoClient.Database(config.DBName).Collection(config.CollectionName)
+	peersCollection = mongoClient.Database(config.DBName).Collection("peers")
+
+	// load mongodb groups collectoin
+	groupsCollection = mongoClient.Database(config.DBName).Collection("groups")
 
 	// create unique index for allowedIPs
-	_, err = collection.Indexes().CreateOne(context.Background(), mongo.IndexModel{Keys: bson.M{"allowedIPs": 1}, Options: options.Index().SetUnique(true)})
+	_, err = peersCollection.Indexes().CreateOne(context.Background(), mongo.IndexModel{Keys: bson.M{"allowedIPs": 1}, Options: options.Index().SetUnique(true)})
 	if err != nil {
 		panic(err)
 	}
 
-	// create unique index for names
-	_, err = collection.Indexes().CreateOne(context.Background(), mongo.IndexModel{Keys: bson.M{"name": 1}, Options: options.Index().SetUnique(true)})
+	// create unique index for peer names
+	_, err = peersCollection.Indexes().CreateOne(context.Background(), mongo.IndexModel{Keys: bson.M{"name": 1}, Options: options.Index().SetUnique(true)})
+	if err != nil {
+		panic(err)
+	}
+
+	// create unique index for group names
+	_, err = groupsCollection.Indexes().CreateOne(context.Background(), mongo.IndexModel{Keys: bson.M{"name": 1}, Options: options.Index().SetUnique(true)})
 	if err != nil {
 		panic(err)
 	}
@@ -142,7 +186,7 @@ func init() {
 	}
 
 	// setup logger
-	ioWriter = CustomWriter{W: os.Stdout, Collection: mongoClient.Database(config.DBName).Collection("logs")}
+	ioWriter = CustomWriter{W: os.Stdout, LogsCollection: mongoClient.Database(config.DBName).Collection("logs")}
 	logger = slog.New(slog.NewJSONHandler(ioWriter, &slog.HandlerOptions{AddSource: true, ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 		if a.Key == "time" {
 			return slog.Int64("time", time.Now().UnixMilli())
@@ -153,7 +197,7 @@ func init() {
 
 	// get peers from db
 	var tempPeers []*Peer
-	cursor, err := collection.Find(context.TODO(), bson.D{})
+	cursor, err := peersCollection.Find(context.TODO(), bson.D{})
 	if err != nil {
 		panic(err)
 	}
@@ -227,7 +271,7 @@ func init() {
 		data.ServerSpecificInfo = []*ServerSpecificInfo{{Address: config.PublicAddress}}
 
 		// add peer to database
-		_, err = collection.InsertOne(context.TODO(), data)
+		_, err = peersCollection.InsertOne(context.TODO(), data)
 		if err != nil {
 			panic(err)
 		}
@@ -269,7 +313,7 @@ func init() {
 	}
 
 	// ssi udpates
-	var updates []mongo.WriteModel
+	var peersUpdates []mongo.WriteModel
 
 	// add peers from database to device
 	for _, pdb := range peers.peers {
@@ -311,13 +355,13 @@ func init() {
 			update.SetUpdate(bson.M{
 				"$push": bson.M{"serverSpecificInfo": ServerSpecificInfo{Address: config.PublicAddress}},
 			})
-			updates = append(updates, update)
+			peersUpdates = append(peersUpdates, update)
 		}
 	}
 
-	// write ssi updates to database
-	if len(updates) > 0 {
-		if _, err := collection.BulkWrite(context.TODO(), updates, &options.BulkWriteOptions{}); err != nil {
+	// write ssi peersUpdates to database
+	if len(peersUpdates) > 0 {
+		if _, err := peersCollection.BulkWrite(context.TODO(), peersUpdates, &options.BulkWriteOptions{}); err != nil {
 			logger.Error(err.Error())
 			panic(err)
 		}
@@ -335,12 +379,13 @@ func init() {
 }
 
 func main() {
-	// update loop
+	// peers loop
 	go func() {
 		var e error
 		var startTime time.Time
 		var publicKey string
-		var updates []mongo.WriteModel
+		var peersUpdates []mongo.WriteModel
+		var groupsUpdates []mongo.WriteModel
 		var peer *Peer
 		var presharedKey wgtypes.Key
 		var p wgtypes.Peer
@@ -394,7 +439,7 @@ func main() {
 						}
 
 						// update peer on database
-						updates = append(updates, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": publicKey}).SetUpdate(bson.M{"$set": bson.M{"disabled": true}}))
+						peersUpdates = append(peersUpdates, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": publicKey}).SetUpdate(bson.M{"$set": bson.M{"disabled": true}}))
 
 						// disable peer in local map
 						peers.mu.Lock()
@@ -426,7 +471,7 @@ func main() {
 					}
 
 					// update peer on database
-					updates = append(updates, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": publicKey}).SetUpdate(bson.M{"$set": bson.M{"disabled": false}}))
+					peersUpdates = append(peersUpdates, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": publicKey}).SetUpdate(bson.M{"$set": bson.M{"disabled": false}}))
 
 					// update peer on local map
 					peers.mu.Lock()
@@ -480,37 +525,131 @@ func main() {
 				peers.mu.Unlock()
 
 				// update ssi on database
-				updates = append(updates, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": publicKey, "serverSpecificInfo.address": config.PublicAddress}).SetUpdate(
+				peersUpdates = append(peersUpdates, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": publicKey, "serverSpecificInfo.address": config.PublicAddress}).SetUpdate(
 					bson.M{"$set": bson.M{"serverSpecificInfo.$": ssi}},
 				))
 
 				// update total tx and rx on database
-				updates = append(updates, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": publicKey}).SetUpdate(
+				peersUpdates = append(peersUpdates, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": publicKey}).SetUpdate(
 					bson.M{"$inc": bson.M{"totalTX": peer.CurrentTX, "totalRX": peer.CurrentRX}},
 				))
+
+				if !peer.GroupID.IsZero() {
+					groupsUpdates = append(groupsUpdates, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": peer.GroupID}).SetUpdate(
+						bson.M{"$inc": bson.M{"totalTX": peer.CurrentTX, "totalRX": peer.CurrentRX}},
+					))
+				}
 			}
 
-			// update database
-			if len(updates) > 0 {
-				_, err := collection.BulkWrite(context.TODO(), updates, &options.BulkWriteOptions{})
+			// update peers collection
+			if len(peersUpdates) > 0 {
+				_, err := peersCollection.BulkWrite(context.TODO(), peersUpdates, &options.BulkWriteOptions{})
 				if err != nil {
 					logger.Error(err.Error())
 					panic(err)
 				}
 			}
 
-			// empty updates slice
-			updates = nil
+			// update groups collection
+			if len(groupsUpdates) > 0 {
+				_, err := groupsCollection.BulkWrite(context.TODO(), groupsUpdates, &options.BulkWriteOptions{})
+				if err != nil {
+					logger.Error(err.Error())
+					panic(err)
+				}
+			}
+
+			// empty peersUpdates slice
+			peersUpdates = nil
+
+			// empty groupsUpdates slice
+			groupsUpdates = nil
 
 			// sleep if a second has not passed
 			time.Sleep(time.Duration(1000-(time.Now().UnixMilli()-startTime.UnixMilli())) * time.Millisecond)
 		}
 	}()
 
+	// groups update loop
+	go func() {
+		if !config.IsMainServer {
+			return
+		}
+		var e error
+		var startTime int64
+		var peersUpdates []mongo.WriteModel
+		var groupsUpdates []mongo.WriteModel
+		var cursor *mongo.Cursor
+		var g *Group
+		var peerID string
+		for {
+			// set starting time of this iteration
+			startTime = time.Now().UnixMilli()
+
+			// get peers from db
+			var groups []*Group
+			cursor, e = groupsCollection.Find(context.TODO(), bson.D{})
+			if e != nil {
+				panic(e)
+			}
+			if e = cursor.All(context.TODO(), &groups); e != nil {
+				panic(e)
+			}
+			for _, g = range groups {
+				if g.Disabled && g.TotalRX+g.TotalTX < g.AllowedUsage && startTime < g.ExpiresAt {
+					groupsUpdates = append(groupsUpdates, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": g.ID}).SetUpdate(
+						bson.M{"$set": bson.M{"disabled": false}},
+					))
+					for _, peerID = range g.PeerIDs {
+						peersUpdates = append(peersUpdates, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": peerID}).SetUpdate(
+							bson.M{"$set": bson.M{"allowedUsage": g.AllowedUsage}},
+						))
+					}
+				} else if !g.Disabled && (g.TotalRX+g.TotalTX > g.AllowedUsage || startTime > g.ExpiresAt) {
+					groupsUpdates = append(groupsUpdates, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": g.ID}).SetUpdate(
+						bson.M{"$set": bson.M{"disabled": true}},
+					))
+					for _, peerID = range g.PeerIDs {
+						peersUpdates = append(peersUpdates, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": peerID}).SetUpdate(
+							bson.M{"$set": bson.M{"allowedUsage": int64(0)}},
+						))
+					}
+				}
+			}
+
+			// update peers collection
+			if len(peersUpdates) > 0 {
+				_, err := peersCollection.BulkWrite(context.TODO(), peersUpdates, &options.BulkWriteOptions{})
+				if err != nil {
+					logger.Error(err.Error())
+					panic(err)
+				}
+			}
+
+			// update groups collection
+			if len(groupsUpdates) > 0 {
+				_, err := groupsCollection.BulkWrite(context.TODO(), groupsUpdates, &options.BulkWriteOptions{})
+				if err != nil {
+					logger.Error(err.Error())
+					panic(err)
+				}
+			}
+
+			// empty peersUpdates slice
+			peersUpdates = nil
+
+			// empty groupsUpdates slice
+			groupsUpdates = nil
+
+			// sleep if a second has not passed
+			time.Sleep(time.Duration(1000-(time.Now().UnixMilli()-startTime)) * time.Millisecond)
+		}
+	}()
+
 	// listen for delete events from database
 	go func() {
 		// create change stream
-		changeStream, e := collection.Watch(context.TODO(), mongo.Pipeline{bson.D{{Key: "$match", Value: bson.D{{Key: "operationType", Value: "delete"}}}}})
+		changeStream, e := peersCollection.Watch(context.TODO(), mongo.Pipeline{bson.D{{Key: "$match", Value: bson.D{{Key: "operationType", Value: "delete"}}}}})
 		if e != nil {
 			logger.Error(e.Error())
 			panic(e)
@@ -566,7 +705,7 @@ func main() {
 	// listen for insert events from database
 	go func() {
 		// create change stream
-		changeStream, e := collection.Watch(context.TODO(), mongo.Pipeline{bson.D{{Key: "$match", Value: bson.D{{Key: "operationType", Value: "insert"}}}}})
+		changeStream, e := peersCollection.Watch(context.TODO(), mongo.Pipeline{bson.D{{Key: "$match", Value: bson.D{{Key: "operationType", Value: "insert"}}}}})
 		if e != nil {
 			logger.Error(e.Error())
 			panic(e)
@@ -622,7 +761,7 @@ func main() {
 			logger.Info("Peer created", slog.String("peer", data.FullDocument.Name))
 
 			// add server specific info entry to database
-			_, e = collection.UpdateByID(context.TODO(), data.FullDocument.ID, bson.M{"$push": bson.M{"serverSpecificInfo": ServerSpecificInfo{Address: config.PublicAddress}}})
+			_, e = peersCollection.UpdateByID(context.TODO(), data.FullDocument.ID, bson.M{"$push": bson.M{"serverSpecificInfo": ServerSpecificInfo{Address: config.PublicAddress}}})
 			if e != nil {
 				logger.Error(e.Error(), slog.String("peer", data.FullDocument.Name))
 				panic(e)
@@ -632,7 +771,7 @@ func main() {
 
 	// listen for update events from database
 	go func() {
-		changeStream, e := collection.Watch(context.TODO(), mongo.Pipeline{bson.D{{Key: "$match", Value: bson.D{{Key: "operationType", Value: "update"}}}}})
+		changeStream, e := peersCollection.Watch(context.TODO(), mongo.Pipeline{bson.D{{Key: "$match", Value: bson.D{{Key: "operationType", Value: "update"}}}}})
 		if e != nil {
 			logger.Error(e.Error())
 			panic(e)
@@ -668,7 +807,15 @@ func main() {
 
 			// check all the updated fields
 			for k, v := range data.UpdateDescription.UpdatedFields {
-				if k == "totalTX" {
+				if k == "groupID" {
+					peers.mu.Lock()
+					p.GroupID = v.(primitive.ObjectID)
+					peers.mu.Unlock()
+				} else if k == "TelegramChatID" {
+					peers.mu.Lock()
+					p.TelegramChatID = v.(int64)
+					peers.mu.Unlock()
+				} else if k == "totalTX" {
 					peers.mu.Lock()
 					p.TotalTX = v.(int64)
 					peers.mu.Unlock()
@@ -765,11 +912,19 @@ func main() {
 	e.Use(Auth)
 
 	e.GET("/api/peers", GetPeers)
+	e.GET("/api/groups", GetGroups)
 	e.GET("/api/peers/:id", GetPeer)
+	e.GET("/api/groups/:id", GetGroup)
 	e.POST("/api/peers", PostPeers)
+	e.POST("/api/groups", PostGroups)
 	e.DELETE("/api/peers/:id", DeletePeers)
+	e.DELETE("/api/groups/:id", DeleteGroup)
+	e.DELETE("/api/groups/:groupID/:peerID", DeletePeerFromGroup)
 	e.PATCH("/api/peers/:id", PatchPeers)
+	e.PATCH("/api/groups/:id", PatchGroups)
 	e.PUT("/api/peers/:id", PutPeers)
+	e.PUT("/api/groups/:id", PutGroups)
+	e.PUT("/api/groups/:groupID/:peerID", PutPeerToGroup)
 	e.GET("/api/config", GetConfig)
 	e.GET("/api/me", GetMe)
 	e.GET("/api/logs", GetLogs)

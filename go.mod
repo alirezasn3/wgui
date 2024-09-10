@@ -9,12 +9,14 @@ require (
 )
 
 require (
+	github.com/alirezasn3/go-permissions v0.0.0-20240815093507-72d84a5b16ed // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	golang.org/x/time v0.5.0 // indirect
 )
 
 require (
+	github.com/alirezasn3/go-systemd v0.0.0-20240815201531-b72dd304f486
 	github.com/golang/snappy v0.0.1 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/josharian/native v1.1.0 // indirect
