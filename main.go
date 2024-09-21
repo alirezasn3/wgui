@@ -42,12 +42,6 @@ type Peers struct {
 	mu    sync.RWMutex
 }
 
-type Groups struct {
-	groups map[string]*Group
-	mu     sync.RWMutex
-}
-
-var groups Groups
 var peers Peers                        // used to intract with peers concurrently
 var config Config                      // used to store app configuration
 var wgc *wgctrl.Client                 // used to interact with wireguard interfaces
