@@ -187,8 +187,10 @@ func PostPeers(ctx echo.Context) error {
 
 	// check for duplicate name
 	peers.mu.RLock()
-	if _, ok := peers.peers[data.Name]; ok {
-		return ctx.String(400, "duplicate name")
+	for _, p := range peers.peers {
+		if p.Name == data.Name {
+			return ctx.String(400, "duplicate name")
+		}
 	}
 	peers.mu.RUnlock()
 
