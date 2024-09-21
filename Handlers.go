@@ -323,11 +323,11 @@ func PostGroups(ctx echo.Context) error {
 	// add group to database
 	data.ID = primitive.NewObjectID()
 	data.PeerIDs = []string{}
-	insertRes, err := groupsCollection.InsertOne(context.TODO(), data)
 	data.Disabled = false
 	data.TotalRX = 0
 	data.TotalTX = 0
 	data.OwnerID = peer.ID
+	insertRes, err := groupsCollection.InsertOne(context.TODO(), data)
 	if err != nil {
 		// Check if the error is a duplicate key error
 		if writeException, ok := err.(mongo.WriteException); ok {
