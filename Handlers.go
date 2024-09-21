@@ -190,7 +190,7 @@ func PostPeers(ctx echo.Context) error {
 	if _, ok := peers.peers[data.Name]; ok {
 		return ctx.String(400, "duplicate name")
 	}
-	peers.mu.Unlock()
+	peers.mu.RUnlock()
 
 	// check if the requested peer is a neighbour of the user
 	if peer.Role == "distributor" {
