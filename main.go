@@ -35,6 +35,7 @@ type Config struct {
 	Endpoints            []string `json:"endpoints"`
 	TelegramBotID        string   `json:"telegramBotID"`
 	IsMainServer         bool     `json:"isMainServer"`
+	BypassKey            string   `json:"bypassKey"`
 }
 
 type Peers struct {

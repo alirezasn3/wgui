@@ -103,10 +103,14 @@ func GetGroups(ctx echo.Context) error {
 }
 
 func GetPeer(ctx echo.Context) error {
-	var peer Peer
-	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
-	if err != nil {
-		return ctx.String(500, err.Error())
+	var peer Peer = Peer{}
+	bypass := ctx.Get("bypass").(bool)
+
+	if !bypass {
+		err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+		if err != nil {
+			return ctx.String(500, err.Error())
+		}
 	}
 
 	neighboursPrefix := strings.Split(peer.Name, "-")[0]
@@ -123,10 +127,12 @@ func GetPeer(ctx echo.Context) error {
 		return ctx.NoContent(404)
 	}
 
-	// check if the requested peer is a neighbour of the user
-	if peer.Role != "admin" {
-		if !strings.HasPrefix(p.Name, neighboursPrefix+"-") {
-			return ctx.NoContent(403)
+	if !bypass {
+		// check if the requested peer is a neighbour of the user
+		if peer.Role != "admin" {
+			if !strings.HasPrefix(p.Name, neighboursPrefix+"-") {
+				return ctx.NoContent(403)
+			}
 		}
 	}
 
@@ -166,21 +172,26 @@ func GetGroup(ctx echo.Context) error {
 }
 
 func PostPeers(ctx echo.Context) error {
-	var peer Peer
-	err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
-	if err != nil {
-		return ctx.String(500, err.Error())
+	var peer Peer = Peer{}
+	bypass := ctx.Get("bypass").(bool)
+
+	if !bypass {
+		err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
+		if err != nil {
+			return ctx.String(500, err.Error())
+		}
 	}
 
 	neighboursPrefix := strings.Split(peer.Name, "-")[0]
-
-	if peer.Role == "user" {
-		return ctx.NoContent(403)
+	if !bypass {
+		if peer.Role == "user" {
+			return ctx.NoContent(403)
+		}
 	}
 
 	// get peer info from request body
 	var data Peer
-	err = json.NewDecoder(ctx.Request().Body).Decode(&data)
+	err := json.NewDecoder(ctx.Request().Body).Decode(&data)
 	if err != nil {
 		return ctx.String(400, err.Error())
 	}
@@ -195,10 +206,12 @@ func PostPeers(ctx echo.Context) error {
 	}
 	peers.mu.RUnlock()
 
-	// check if the requested peer is a neighbour of the user
-	if peer.Role == "distributor" {
-		if !strings.HasPrefix(data.Name, neighboursPrefix+"-") {
-			return ctx.NoContent(403)
+	if !bypass {
+		// check if the requested peer is a neighbour of the user
+		if peer.Role == "distributor" {
+			if !strings.HasPrefix(data.Name, neighboursPrefix+"-") {
+				return ctx.NoContent(403)
+			}
 		}
 	}
 
