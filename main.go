@@ -343,7 +343,7 @@ func main() {
 				ssisPipeline.HSet(context.Background(), publicKey, "endpoint", p.Endpoint.String())
 
 				// update last handshake time
-				ssisPipeline.HSet(context.Background(), "lastHandshake", p.LastHandshakeTime.Sub(startTime).Abs().Round(time.Second).String())
+				ssisPipeline.HSet(context.Background(), publicKey, "lastHandshake", p.LastHandshakeTime.Sub(startTime).Abs().Round(time.Second).String())
 
 				// update total tx and rx on database
 				peersPipeline.HIncrBy(context.Background(), publicKey, "totalTX", currentTX)
