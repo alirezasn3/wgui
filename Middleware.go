@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net"
 	"strings"
 
@@ -18,7 +19,7 @@ func Auth(next echo.HandlerFunc) echo.HandlerFunc {
 		ip := strings.Split(ctx.Request().RemoteAddr, ":")[0]
 		// check if request is from peer
 		if !deviceCIDR.Contains(net.ParseIP(ip)) {
-			logger.Warn("Unauthorized request from " + ctx.Request().RemoteAddr)
+			log.Println("Unauthorized request from " + ctx.Request().RemoteAddr)
 			return ctx.NoContent(403)
 		}
 		ctx.Set("peerIP", ip)
