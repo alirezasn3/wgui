@@ -17,12 +17,12 @@ import (
 
 func GetPeers(ctx echo.Context) error {
 	var peer Peer
-	err := peersDB.client.HGetAll(context.Background(), "*:"+ctx.Get("peerIP").(string)+"/32"+":*").Scan(peer)
+	err := peersDB.client.HGetAll(context.Background(), "*:"+ctx.Get("peerIP").(string)+"/32"+":*").Scan(&peer)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
 
-	var peers []*Peer
+	var peers []Peer
 	var keys []string
 	var match string
 
@@ -36,9 +36,9 @@ func GetPeers(ctx echo.Context) error {
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
-	var p *Peer
+	var p Peer
 	for _, k := range keys {
-		must(peersDB.client.HGetAll(context.Background(), k).Scan(p))
+		must(peersDB.client.HGetAll(context.Background(), k).Scan(&p))
 		peers = append(peers, p)
 	}
 
