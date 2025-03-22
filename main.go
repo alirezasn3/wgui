@@ -190,18 +190,18 @@ func init() {
 	log.Println("Connected to ssis database")
 
 	// get peers from db
-	var peers []*Peer
+	var peers []Peer
 	keys, err := peersDB.client.Keys(context.Background(), "*").Result()
 	must(err)
-	var p *Peer
+	var p Peer
 	for _, k := range keys {
-		must(peersDB.client.HGetAll(context.Background(), k).Scan(p))
+		must(peersDB.client.HGetAll(context.Background(), k).Scan(&p))
 		peers = append(peers, p)
 	}
 
 	// check if any peer exists
 	if len(peers) == 0 {
-		var newPeer *Peer = &Peer{
+		newPeer := Peer{
 			Name:         "Admin-0",
 			AllowedUsage: 1024000000000,
 			ExpiresAt:    time.Now().Add(time.Hour * 24 * 365).UnixMilli(),
@@ -486,10 +486,10 @@ func main() {
 		var startTime int64
 		peersPipeline := peersDB.client.Pipeline()
 		groupsPipeline := peersDB.client.Pipeline()
-		var g *Group
+		var g Group
 		var peerID string
 		var keys []string
-		var groups []*Group
+		var groups []Group
 		var k string
 
 		for {
@@ -499,7 +499,7 @@ func main() {
 			keys, err = groupsDB.client.Keys(context.Background(), "*").Result()
 			must(err)
 			for _, k = range keys {
-				must(groupsDB.client.HGetAll(context.Background(), k).Scan(g))
+				must(groupsDB.client.HGetAll(context.Background(), k).Scan(&g))
 				groups = append(groups, g)
 			}
 
