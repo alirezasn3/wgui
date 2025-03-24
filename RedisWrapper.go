@@ -34,11 +34,18 @@ func (pdb *PeersDB) Connect(url string) error {
 		return err
 	}
 	pdb.client = client
+
 	client, err = CreateRedisClient(url + "/8")
 	if err != nil {
 		return err
 	}
 	pdb.allowedIPsIndex = client
+
+	client, err = CreateRedisClient(url + "/9")
+	if err != nil {
+		return err
+	}
+	pdb.nameIndex = client
 
 	return nil
 }
