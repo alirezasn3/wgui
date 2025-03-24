@@ -115,14 +115,14 @@ func (pdb *PeersDB) GetPeerByAllowedIPs(allowedIPs string) (*Peer, error) {
 
 func (pdb *PeersDB) CreatePeer(p Peer) error {
 	_, err := pdb.GetPeerByName(p.Name)
-	if err != nil {
-		if err.Error() != "peer not found" {
-			return err
-		}
+	if err == nil {
 		return errors.New("duplicate peer name")
 	}
-	_, err = pdb.client.HSet(ctx, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, p).Result()
-	return err
+	if err.Error() == "peer not found" {
+		return pdb.client.HSet(ctx, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, p).Err()
+	} else {
+		return err
+	}
 }
 
 func (pdb *PeersDB) ResetPeerUsage(key string) error {
