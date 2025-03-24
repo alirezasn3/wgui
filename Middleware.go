@@ -22,7 +22,17 @@ func Auth(next echo.HandlerFunc) echo.HandlerFunc {
 			log.Println("Unauthorized request from " + ctx.Request().RemoteAddr)
 			return ctx.NoContent(403)
 		}
-		ctx.Set("peerIP", ip)
+
+		peer, err := peersDB.GetPeerByAllowedIPs(ip + "/32")
+		if err != nil {
+			if err.Error() == "peer not found" {
+				log.Println("Unauthorized request from " + ctx.Request().RemoteAddr)
+				return ctx.NoContent(403)
+			}
+			return ctx.String(500, err.Error())
+		}
+		ctx.Set("peerName", peer.Name)
+		ctx.Set("peerRole", peer.Role)
 		ctx.Set("bypass", false)
 		return next(ctx)
 	}

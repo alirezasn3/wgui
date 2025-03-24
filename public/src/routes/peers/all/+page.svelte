@@ -1,9 +1,7 @@
 <script lang="ts">
 	import { formatBytes, formatExpiry, sleep, type Peer } from '$lib'
-	import { onMount } from 'svelte'
-	import { getContext } from 'svelte'
+	import { getContext, onMount } from 'svelte'
 	import type { Writable } from 'svelte/store'
-	import protobuf, { Message } from 'protobufjs'
 	import { goto } from '$app/navigation'
 
 	const loading: Writable<boolean> = getContext('loading')
@@ -25,16 +23,14 @@
 		}, 0)
 	)
 
-	async function updatePeers(PBPeers: protobuf.Type) {
+	onMount(async () => {
 		try {
-			let ab
 			let data
-			while (shouldUpdatePeers) {
+			while (true) {
 				if ($loading) loading.set(false)
 				const res = await fetch('/api/peers')
 				if (res.status === 200) {
-					ab = await res.arrayBuffer()
-					data = PBPeers.decode(new Uint8Array(ab), ab.byteLength)
+					data = await res.json()
 					// @ts-ignore
 					peers = (data.Peers as Peer[]).sort((a, b) => a.ExpiresAt - b.ExpiresAt)
 					// @ts-ignore
@@ -46,22 +42,6 @@
 			}
 		} catch (error) {
 			console.log(error)
-		}
-	}
-
-	onMount(() => {
-		try {
-			protobuf
-				.load('/Peer.proto')
-				.then((pb) => pb.lookupType('PBPeers'))
-				.then(updatePeers)
-				.catch(console.log)
-
-			return () => {
-				shouldUpdatePeers = false
-			}
-		} catch (e) {
-			console.log(e)
 		}
 	})
 </script>

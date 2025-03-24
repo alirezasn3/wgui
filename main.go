@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -13,13 +12,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	sync "sync"
 	"time"
 
 	goSystemd "github.com/alirezasn3/go-systemd"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/redis/go-redis/v9"
 	"golang.zx2c4.com/wireguard/wgctrl"
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
@@ -70,34 +69,15 @@ type Groups struct {
 	mu     sync.RWMutex
 }
 
-type RedisWrapper struct {
-	client *redis.Client
-}
-
 var groups Groups
-var config Config          // used to store app configuration
-var wgc *wgctrl.Client     // used to interact with wireguard interfaces
-var deviceCIDR *net.IPNet  // used to check if client is in device subnet
-var peersDB *RedisWrapper  // used to interact with reids database
-var groupsDB *RedisWrapper // used to interact with reids database
-var ssisDB *RedisWrapper   // used to interact with reids database
-var execDir string         // used to store the directory of the executable
-
-func CreateRedisClient(url string) (*RedisWrapper, error) {
-	// create redis client
-	options, err := redis.ParseURL(url)
-	if err != nil {
-		return nil, err
-	}
-	client := redis.NewClient(options)
-
-	// check redis connection
-	if client.Ping(context.Background()).Val() == "PONG" {
-		return &RedisWrapper{client: client}, nil
-	} else {
-		return nil, errors.New("failed to connect to redis, did not receive PONG response")
-	}
-}
+var config Config         // used to store app configuration
+var wgc *wgctrl.Client    // used to interact with wireguard interfaces
+var deviceCIDR *net.IPNet // used to check if client is in device subnet
+var peersDB = PeersDB{}   // used to interact with reids database
+var groupsDB = GroupsDB{} // used to interact with reids database
+var ssisDB = SSISDB{}     // used to interact with reids database
+var execDir string        // used to store the directory of the executable
+var ctx = context.TODO()
 
 func must(returnValues ...interface{}) {
 	if returnValues[len(returnValues)-1] != nil {
@@ -159,7 +139,7 @@ func init() {
 		// load mongodb peers collectoin
 		// peersCollection = mongoClient.Database(config.DBName).Collection("peers")
 
-		// _, err = peersCollection.UpdateMany(context.Background(), bson.M{}, bson.M{"$set": bson.M{"serverSpecificInfo": []ServerSpecificInfo{}}})
+		// _, err = peersCollection.UpdateMany(ctx, bson.M{}, bson.M{"$set": bson.M{"serverSpecificInfo": []ServerSpecificInfo{}}})
 		// if err != nil {
 		// 	panic(err)
 		// }
@@ -175,29 +155,20 @@ func init() {
 	must(err)
 
 	// create redis client for peers
-	peersDB, err = CreateRedisClient(config.RedisURL + "/0")
-	must(err)
+	must(peersDB.Connect(config.RedisURL + "/0"))
 	log.Println("Connected to peers database")
 
 	// create redis client for groups
-	groupsDB, err = CreateRedisClient(config.RedisURL + "/1")
-	must(err)
+	must(groupsDB.Connect(config.RedisURL + "/1"))
 	log.Println("Connected to groups database")
 
 	// create redis client for ssis
-	ssisDB, err = CreateRedisClient(config.RedisURL + "/2")
-	must(err)
+	must(ssisDB.Connect(config.RedisURL + "/2"))
 	log.Println("Connected to ssis database")
 
 	// get peers from db
-	var peers []Peer
-	keys, err := peersDB.client.Keys(context.Background(), "*").Result()
+	peers, err := peersDB.GetAllPeers()
 	must(err)
-	var p Peer
-	for _, k := range keys {
-		must(peersDB.client.HGetAll(context.Background(), k).Scan(&p))
-		peers = append(peers, p)
-	}
 
 	// check if any peer exists
 	if len(peers) == 0 {
@@ -241,7 +212,7 @@ func init() {
 		newPeer.AllowedIPs = ip.ToString() + "/32"
 
 		// add peer to database
-		must(peersDB.client.HSet(context.Background(), newPeer.PublicKey, newPeer).Result())
+		must(peersDB.CreatePeer(newPeer))
 
 		// add peer to device
 		must(wgc.ConfigureDevice(config.InterfaceName, wgtypes.Config{Peers: []wgtypes.PeerConfig{{
@@ -251,7 +222,7 @@ func init() {
 		}}}))
 
 		// add peer to list of recieved peers from database to be added to device
-		peers = append(peers, newPeer)
+		peers = append(peers, &newPeer)
 
 		// save config file
 		must(os.WriteFile(filepath.Join(execDir, "Admin-0.conf"), []byte(fmt.Sprintf("[Interface]\nPrivateKey=%s\nAddress=%s\nDNS=1.1.1.1,8.8.8.8\n[Peer]\nPublicKey=%s\nAllowedIPs=0.0.0.0/0\nEndpoint=%s:%d\n", newPeer.PrivateKey, newPeer.AllowedIPs, device.PublicKey.String(), config.PublicAddress, device.ListenPort)), 0666))
@@ -319,6 +290,16 @@ func main() {
 			lastUsageMap[p.PublicKey.String()] = [2]int64{p.TransmitBytes, p.ReceiveBytes}
 		}
 
+		// populate groups
+		tempGroups, err := groupsDB.GetAllGroups()
+		must(err)
+		for _, g := range tempGroups {
+			parts := strings.Split(g.Name, ":")
+			groups.mu.Lock()
+			groups.groups[parts[2]] = g.Name
+			groups.mu.Unlock()
+		}
+
 		for {
 			// set starting time of this iteration
 			startTime = time.Now()
@@ -335,42 +316,43 @@ func main() {
 				// calculate and update current tx and rx
 				currentTX = p.TransmitBytes - lastUsageMap[publicKey][0]
 				currentRX = p.ReceiveBytes - lastUsageMap[publicKey][1]
-				ssisPipeline.HSet(context.Background(), publicKey, "tx", currentTX)
-				ssisPipeline.HSet(context.Background(), publicKey, "rx", currentRX)
+				ssisPipeline.HSet(ctx, publicKey+":"+config.PublicAddress, "tx", currentTX)
+				ssisPipeline.HSet(ctx, publicKey+":"+config.PublicAddress, "rx", currentRX)
 				lastUsageMap[publicKey] = [2]int64{p.TransmitBytes, p.ReceiveBytes}
 
 				// update current endpoint
-				ssisPipeline.HSet(context.Background(), publicKey, "endpoint", p.Endpoint.String())
+				ssisPipeline.HSet(ctx, publicKey+":"+config.PublicAddress, "endpoint", p.Endpoint.String())
 
 				// update last handshake time
-				ssisPipeline.HSet(context.Background(), publicKey, "lastHandshake", p.LastHandshakeTime.Sub(startTime).Abs().Round(time.Second).String())
+				// ssisPipeline.HSet(ctx, publicKey+":"+config.PublicAddress, "lastHandshake", p.LastHandshakeTime.Sub(startTime).Abs().Round(time.Second).String())
+				ssisPipeline.HSet(ctx, publicKey+":"+config.PublicAddress, "lastHandshake", p.LastHandshakeTime.UnixMilli())
 
 				// update total tx and rx on database
-				peersPipeline.HIncrBy(context.Background(), publicKey, "totalTX", currentTX)
-				peersPipeline.HIncrBy(context.Background(), publicKey, "totalRX", currentRX)
+				peersPipeline.HIncrBy(ctx, "*:"+publicKey, "totalTX", currentTX)
+				peersPipeline.HIncrBy(ctx, "*:"+publicKey, "totalRX", currentRX)
 
 				// update group usage if peer is in a group
 				groups.mu.RLock()
 				if groupName, ok = groups.groups[publicKey]; ok {
-					groupsPipeline.HIncrBy(context.Background(), groupName, "totalTX", currentTX)
-					groupsPipeline.HIncrBy(context.Background(), groupName, "totalRX", currentRX)
+					groupsPipeline.HIncrBy(ctx, groupName, "totalTX", currentTX)
+					groupsPipeline.HIncrBy(ctx, groupName, "totalRX", currentRX)
 				}
 				groups.mu.RUnlock()
 			}
 
 			// update peers
 			if peersPipeline.Len() > 0 {
-				must(peersPipeline.Exec(context.Background()))
+				must(peersPipeline.Exec(ctx))
 			}
 
 			// update groups
 			if groupsPipeline.Len() > 0 {
-				must(groupsPipeline.Exec(context.Background()))
+				must(groupsPipeline.Exec(ctx))
 			}
 
 			// update ssis
 			if ssisPipeline.Len() > 0 {
-				must(ssisPipeline.Exec(context.Background()))
+				must(ssisPipeline.Exec(ctx))
 			}
 
 			// sleep if a second has not passed
@@ -382,10 +364,10 @@ func main() {
 	go func() {
 		var err error
 		var startTime time.Time
-		var keys []string
-		var p Peer
-		var dp wgtypes.Peer
-		var devicePeer *wgtypes.Peer
+		var peers []*Peer
+		var dbp *Peer       // database peer
+		var dp wgtypes.Peer // device peer
+		var foundDevicePeer *wgtypes.Peer
 		var device *wgtypes.Device
 		var presharedKey, publicKey wgtypes.Key
 		peersPipeline := peersDB.client.Pipeline()
@@ -397,31 +379,33 @@ func main() {
 			device, err = wgc.Device(config.InterfaceName)
 			must(err)
 
-			keys, err = peersDB.client.Keys(context.Background(), "*").Result()
+			// get peers
+			peers, err = peersDB.GetAllPeers()
 			must(err)
-			for _, k := range keys {
-				must(peersDB.client.HGetAll(context.Background(), k).Scan(&p))
 
+			// loop over peers
+			for _, dbp = range peers {
 				// check if peer is in device
 				for _, dp = range device.Peers {
-					if dp.PublicKey.String() == p.PublicKey {
-						devicePeer = &dp
+					if dp.PublicKey.String() == dbp.PublicKey {
+						foundDevicePeer = &dp
 						break
 					}
 				}
-				if devicePeer == nil {
+				if foundDevicePeer == nil {
+					log.Println(dbp.Name + " exists in database but not on device")
 					continue
 				}
 
 				// check to see if peer should be disabled
-				if startTime.UnixMilli() > p.ExpiresAt || p.TotalRX+p.TotalTX > p.AllowedUsage {
-					if devicePeer.PresharedKey.String() == "" {
+				if startTime.UnixMilli() > dbp.ExpiresAt || dbp.TotalRX+dbp.TotalTX > dbp.AllowedUsage {
+					if foundDevicePeer.PresharedKey.String() == "" {
 						// create preshared key to invalidate peer
 						presharedKey, err = wgtypes.GenerateKey()
 						must(err)
 
 						// parse public key
-						publicKey, err = wgtypes.ParseKey(p.PublicKey)
+						publicKey, err = wgtypes.ParseKey(dbp.PublicKey)
 						must(err)
 
 						// set peer's preshared key
@@ -436,8 +420,8 @@ func main() {
 						}))
 
 						// update peer on database
-						if !p.Disabled {
-							peersPipeline.HSet(context.Background(), p.PublicKey, "disabled", "true")
+						if !dbp.Disabled {
+							peersPipeline.HSet(ctx, dbp.PublicKey, "disabled", true)
 						}
 					}
 
@@ -445,10 +429,10 @@ func main() {
 				}
 
 				// check to see if peer should be enabled
-				if startTime.UnixMilli() < p.ExpiresAt && p.TotalRX+p.TotalTX < p.AllowedUsage {
-					if devicePeer.PresharedKey.String() != "" {
+				if startTime.UnixMilli() < dbp.ExpiresAt && dbp.TotalRX+dbp.TotalTX < dbp.AllowedUsage {
+					if foundDevicePeer.PresharedKey.String() != "" {
 						// parse public key
-						publicKey, err = wgtypes.ParseKey(p.PublicKey)
+						publicKey, err = wgtypes.ParseKey(dbp.PublicKey)
 						must(err)
 
 						// remove peer's preshared key to enable it
@@ -463,8 +447,8 @@ func main() {
 						}))
 
 						// update peer on database
-						if p.Disabled {
-							peersPipeline.HSet(context.Background(), p.PublicKey, "disabled", "false")
+						if dbp.Disabled {
+							peersPipeline.HSet(ctx, dbp.PublicKey, "disabled", false)
 						}
 					}
 
@@ -473,10 +457,10 @@ func main() {
 			}
 
 			if peersPipeline.Len() > 0 {
-				must(peersPipeline.Exec(context.Background()))
+				must(peersPipeline.Exec(ctx))
 			}
 
-			devicePeer = nil
+			foundDevicePeer = nil
 		}
 	}()
 
@@ -486,45 +470,39 @@ func main() {
 		var startTime int64
 		peersPipeline := peersDB.client.Pipeline()
 		groupsPipeline := peersDB.client.Pipeline()
-		var g Group
+		var g *Group
 		var peerID string
-		var keys []string
-		var groups []Group
-		var k string
+		var groups []*Group
 
 		for {
 			// set starting time of this iteration
 			startTime = time.Now().UnixMilli()
 
-			keys, err = groupsDB.client.Keys(context.Background(), "*").Result()
+			groups, err = groupsDB.GetAllGroups()
 			must(err)
-			for _, k = range keys {
-				must(groupsDB.client.HGetAll(context.Background(), k).Scan(&g))
-				groups = append(groups, g)
-			}
 
 			for _, g = range groups {
 				if g.Disabled && g.TotalRX+g.TotalTX < g.AllowedUsage && startTime < g.ExpiresAt {
-					groupsPipeline.HSet(context.Background(), g.Name, "disabled", "false")
+					groupsPipeline.HSet(ctx, g.Name, "disabled", false)
 					for _, peerID = range g.PeerIDs {
-						peersPipeline.HSet(context.Background(), peerID, "allowedUsage", g.AllowedUsage)
+						peersPipeline.HSet(ctx, peerID, "allowedUsage", g.AllowedUsage)
 					}
 				} else if !g.Disabled && (g.TotalRX+g.TotalTX > g.AllowedUsage || startTime > g.ExpiresAt) {
-					groupsPipeline.HSet(context.Background(), g.Name, "disabled", "true")
+					groupsPipeline.HSet(ctx, g.Name, "disabled", true)
 					for _, peerID = range g.PeerIDs {
-						peersPipeline.HSet(context.Background(), peerID, "allowedUsage", 0)
+						peersPipeline.HSet(ctx, peerID, "allowedUsage", 0)
 					}
 				}
 			}
 
 			// update peers
 			if peersPipeline.Len() > 0 {
-				must(peersPipeline.Exec(context.Background()))
+				must(peersPipeline.Exec(ctx))
 			}
 
 			// update groups
 			if groupsPipeline.Len() > 0 {
-				must(groupsPipeline.Exec(context.Background()))
+				must(groupsPipeline.Exec(ctx))
 			}
 
 			// sleep if a second has not passed
@@ -532,7 +510,7 @@ func main() {
 		}
 	}()
 
-	createPeersPubSub := peersDB.client.Subscribe(context.Background(), "createPeers")
+	createPeersPubSub := peersDB.client.Subscribe(ctx, "createPeers")
 	defer createPeersPubSub.Close()
 	go func() {
 		var publicKey wgtypes.Key
@@ -556,7 +534,7 @@ func main() {
 		}
 	}()
 
-	deletePeersPubSub := peersDB.client.Subscribe(context.Background(), "deletePeers")
+	deletePeersPubSub := peersDB.client.Subscribe(ctx, "deletePeers")
 	defer deletePeersPubSub.Close()
 	go func() {
 		var publicKey wgtypes.Key

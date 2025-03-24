@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -14,35 +13,28 @@ import (
 )
 
 // peer key -> name:allowedIPs:publicKey
+// group key -> name:ownerID
 
 func GetPeers(ctx echo.Context) error {
-	var peer Peer
-	err := peersDB.client.HGetAll(context.Background(), "*:"+ctx.Get("peerIP").(string)+"/32"+":*").Scan(&peer)
-	if err != nil {
-		return ctx.String(500, err.Error())
-	}
+	peerRole := ctx.Get("peerRole").(string)
+	peerName := ctx.Get("peerName").(string)
 
-	var peers []Peer
-	var keys []string
-	var match string
+	var err error
+	var peers []*Peer
 
-	if peer.Role == "admin" {
-		match = "*"
+	if peerRole == "admin" {
+		peers, err = peersDB.GetAllPeers()
+		if err != nil {
+			return ctx.String(500, err.Error())
+		}
 	} else {
-		match = strings.Split(peer.Name, "-")[0] + "-" + "*"
+		peers, err = peersDB.GetPeerNeighbours(strings.Split(peerName, "-")[0] + "-")
+		if err != nil {
+			return ctx.String(500, err.Error())
+		}
 	}
 
-	keys, err = peersDB.client.Keys(context.Background(), match).Result()
-	if err != nil {
-		return ctx.String(500, err.Error())
-	}
-	var p Peer
-	for _, k := range keys {
-		must(peersDB.client.HGetAll(context.Background(), k).Scan(&p))
-		peers = append(peers, p)
-	}
-
-	return ctx.JSON(200, map[string]interface{}{"role": peer.Role, "peers": peers})
+	return ctx.JSON(200, map[string]interface{}{"role": peerRole, "peers": peers})
 }
 
 func GetGroups(ctx echo.Context) error {
@@ -77,42 +69,36 @@ func GetGroups(ctx echo.Context) error {
 }
 
 func GetPeer(ctx echo.Context) error {
-	var peer Peer = Peer{}
 	bypass := ctx.Get("bypass").(bool)
-
-	if !bypass {
-		err := peersDB.client.HGetAll(context.TODO(), "*:"+ctx.Get("peerIP").(string)+"/32"+":*").Scan(&peer)
-		if err != nil {
-			return ctx.String(500, err.Error())
-		}
-	}
-
-	neighboursPrefix := strings.Split(peer.Name, "-")[0]
+	peerRole := ctx.Get("peerRole").(string)
+	peerName := ctx.Get("peerName").(string)
 
 	// decode uri
-	id, err := url.QueryUnescape(ctx.Param("id"))
+	key, err := url.QueryUnescape(ctx.Param("id"))
 	if err != nil {
 		return ctx.NoContent(400)
 	}
 
 	// check if peer exists
-	var p Peer
-	err = peersDB.client.HGetAll(context.Background(), id).Scan(&p)
+	peer, err := peersDB.GetPeerByKey(key)
 	if err != nil {
-		return ctx.String(404, err.Error())
+		if err.Error() == "peer not found" {
+			return ctx.NoContent(404)
+		}
+		return ctx.String(500, err.Error())
 	}
 
 	if !bypass {
 		// check if the requested peer is a neighbour of the user
-		if peer.Role != "admin" {
-			if !strings.HasPrefix(p.Name, neighboursPrefix+"-") {
+		if peerRole != "admin" {
+			if !strings.HasPrefix(peer.Name, strings.Split(peerName, "-")[0]+"-") {
 				return ctx.NoContent(403)
 			}
 		}
 	}
 
 	// return peer
-	return ctx.JSON(200, p)
+	return ctx.JSON(200, peer)
 }
 
 func GetGroup(ctx echo.Context) error {
@@ -149,40 +135,38 @@ func GetGroup(ctx echo.Context) error {
 }
 
 func PostPeers(ctx echo.Context) error {
-	var peer Peer = Peer{}
 	bypass := ctx.Get("bypass").(bool)
+	peerRole := ctx.Get("peerRole").(string)
+	peerName := ctx.Get("peerName").(string)
 
 	if !bypass {
-		err := peersDB.client.HGetAll(context.TODO(), "*:"+ctx.Get("peerIP").(string)+"/32"+":*").Scan(&peer)
-		if err != nil {
-			return ctx.String(500, err.Error())
-		}
-	}
-
-	neighboursPrefix := strings.Split(peer.Name, "-")[0]
-	if !bypass {
-		if peer.Role == "user" {
+		if peerRole == "user" {
 			return ctx.NoContent(403)
 		}
 	}
 
+	neighboursPrefix := strings.Split(peerName, "-")[0]
+
 	// get peer info from request body
-	var data Peer
-	err := json.NewDecoder(ctx.Request().Body).Decode(&data)
+	var newPeer Peer
+	err := json.NewDecoder(ctx.Request().Body).Decode(&newPeer)
 	if err != nil {
 		return ctx.String(400, err.Error())
 	}
 
 	// check for duplicate name
-	keys := peersDB.client.Keys(context.Background(), data.Name+":*").Val()
-	if len(keys) > 0 {
+	duplicateName, err := peersDB.KeyExists(newPeer.Name + ":*")
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+	if duplicateName {
 		return ctx.String(400, "duplicate name")
 	}
 
 	if !bypass {
 		// check if the requested peer is a neighbour of the user
-		if peer.Role == "distributor" {
-			if !strings.HasPrefix(data.Name, neighboursPrefix+"-") {
+		if peerRole == "distributor" {
+			if !strings.HasPrefix(newPeer.Name, neighboursPrefix+"-") {
 				return ctx.NoContent(403)
 			}
 		}
@@ -194,8 +178,8 @@ func PostPeers(ctx echo.Context) error {
 		return ctx.String(500, err.Error())
 	}
 	publicKey := privateKey.PublicKey()
-	data.PrivateKey = privateKey.String()
-	data.PublicKey = publicKey.String()
+	newPeer.PrivateKey = privateKey.String()
+	newPeer.PublicKey = publicKey.String()
 
 	// find unused ip
 	var ip IPAddress
@@ -227,19 +211,26 @@ findIP:
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
-	data.AllowedIPs = ip.ToString() + "/32"
+	newPeer.AllowedIPs = ip.ToString() + "/32"
 
 	var udpAddress *net.UDPAddr = nil
 
 	// check for duplicate allowedIPs
-	if len(peersDB.client.Keys(context.Background(), "*:"+data.AllowedIPs+":*").Val()) > 0 {
+	duplicateAllowedIPs, err := peersDB.KeyExists("*:" + newPeer.AllowedIPs + ":*")
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+	if duplicateAllowedIPs {
 		ip.Increment()
 		goto findIP
 	}
 
 	// add peer to database
-	_, err = peersDB.client.HSet(context.TODO(), data.Name+":"+data.AllowedIPs+":"+data.PublicKey, data).Result()
+	err = peersDB.CreatePeer(newPeer)
 	if err != nil {
+		if err.Error() == "duplicate peer name" {
+			return ctx.String(400, "duplicate name")
+		}
 		return ctx.String(500, err.Error())
 	}
 
@@ -253,7 +244,7 @@ findIP:
 		return ctx.String(500, err.Error())
 	}
 
-	return ctx.String(201, data.PublicKey)
+	return ctx.String(201, newPeer.Name+":"+newPeer.AllowedIPs+":"+newPeer.PublicKey)
 }
 
 func PostGroups(ctx echo.Context) error {
@@ -711,33 +702,27 @@ func PatchGroups(ctx echo.Context) error {
 }
 
 func PutPeers(ctx echo.Context) error {
-	var peer Peer
-	err := peersDB.client.HGetAll(context.TODO(), "*:"+ctx.Get("peerIP").(string)+"/32"+":*").Scan(&peer)
-	if err != nil {
-		return ctx.String(500, err.Error())
-	}
+	peerName := ctx.Get("peerName").(string)
+	peerRole := ctx.Get("peerRole").(string)
 
-	if peer.Role == "user" {
+	if peerRole == "user" {
 		return ctx.NoContent(403)
 	}
 
 	// decode uri
-	id, err := url.QueryUnescape(ctx.Param("id"))
+	key, err := url.QueryUnescape(ctx.Param("id"))
 	if err != nil {
 		return ctx.NoContent(400)
 	}
 
-	neighboursPrefix := strings.Split(peer.Name, "-")[0]
-
 	// check if the requested peer is a neighbour of the user
-	name := strings.Split(id, ":")[0]
-	if peer.Role == "distributor" {
-		if !strings.HasPrefix(name, neighboursPrefix+"-") {
+	if peerRole == "distributor" {
+		if !strings.HasPrefix(strings.Split(key, ":")[0], strings.Split(peerName, "-")[0]+"-") {
 			return ctx.NoContent(403)
 		}
 	}
 
-	_, err = peersDB.client.HSet(context.Background(), id, map[string]interface{}{"totalTX": "0", "totalRX": "0"}).Result()
+	err = peersDB.ResetPeerUsage(key)
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
@@ -852,21 +837,21 @@ func PutPeerToGroup(ctx echo.Context) error {
 
 func GetConfig(ctx echo.Context) error {
 	device, err := wgc.Device(config.InterfaceName)
+
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
+
 	return ctx.JSON(200, map[string]interface{}{"serverPublicKey": device.PublicKey.String(), "serverAddress": fmt.Sprintf("%s:%d", config.PublicAddress, device.ListenPort), "endpoints": config.Endpoints, "telegramBotID": config.TelegramBotID})
 }
 
 func GetMe(ctx echo.Context) error {
-	var peer Peer
-	err := peersDB.client.HGetAll(context.TODO(), "*:"+ctx.Get("peerIP").(string)+"/32"+":*").Scan(&peer)
-	if err != nil {
-		return ctx.String(500, err.Error())
+	peerRole := ctx.Get("peerRole").(string)
+	peerName := ctx.Get("peerName").(string)
+
+	if peerRole == "distributor" {
+		return ctx.JSON(200, map[string]interface{}{"role": peerRole, "prefix": strings.Split(peerName, "-")[0]})
 	}
 
-	if peer.Role == "distributor" {
-		return ctx.JSON(200, map[string]interface{}{"role": peer.Role, "prefix": strings.Split(peer.Name, "-")[0]})
-	}
-	return ctx.JSON(200, map[string]interface{}{"role": peer.Role, "prefix": ""})
+	return ctx.JSON(200, map[string]interface{}{"role": peerRole, "prefix": ""})
 }
