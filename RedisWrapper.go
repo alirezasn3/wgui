@@ -23,15 +23,23 @@ func CreateRedisClient(url string) (*redis.Client, error) {
 }
 
 type PeersDB struct {
-	client *redis.Client
+	client          *redis.Client
+	allowedIPsIndex *redis.Client
+	nameIndex       *redis.Client
 }
 
 func (pdb *PeersDB) Connect(url string) error {
-	client, err := CreateRedisClient(url)
+	client, err := CreateRedisClient(url + "/0")
 	if err != nil {
 		return err
 	}
 	pdb.client = client
+	client, err = CreateRedisClient(url + "/8")
+	if err != nil {
+		return err
+	}
+	pdb.allowedIPsIndex = client
+
 	return nil
 }
 
@@ -54,7 +62,7 @@ func (pdb *PeersDB) GetAllPeers() ([]*Peer, error) {
 
 func (pdb *PeersDB) GetPeerNeighbours(prefix string) ([]*Peer, error) {
 	var peers []*Peer
-	keys, err := pdb.client.Keys(ctx, "*").Result()
+	keys, err := pdb.client.Keys(ctx, prefix+"*").Result()
 	if err != nil {
 		return nil, err
 	}
@@ -81,8 +89,12 @@ func (pdb *PeersDB) KeyExists(key string) (bool, error) {
 }
 
 func (pdb *PeersDB) GetPeerByName(name string) (*Peer, error) {
+	key, err := pdb.nameIndex.Get(ctx, name).Result()
+	if err != nil {
+		return nil, err
+	}
 	var p Peer
-	err := pdb.client.HGetAll(ctx, name+":*").Scan(&p)
+	err = pdb.client.HGetAll(ctx, key).Scan(&p)
 	if err != nil {
 		return nil, err
 	} else if p == (Peer{}) {
@@ -103,8 +115,12 @@ func (pdb *PeersDB) GetPeerByKey(key string) (*Peer, error) {
 }
 
 func (pdb *PeersDB) GetPeerByAllowedIPs(allowedIPs string) (*Peer, error) {
+	key, err := pdb.allowedIPsIndex.Get(ctx, allowedIPs).Result()
+	if err != nil {
+		return nil, err
+	}
 	var p Peer
-	err := pdb.client.HGetAll(ctx, "*:"+allowedIPs+":*").Scan(&p)
+	err = pdb.client.HGetAll(ctx, key).Scan(&p)
 	if err != nil {
 		return nil, err
 	} else if p == (Peer{}) {
@@ -119,7 +135,14 @@ func (pdb *PeersDB) CreatePeer(p Peer) error {
 		return errors.New("duplicate peer name")
 	}
 	if err.Error() == "peer not found" {
-		return pdb.client.HSet(ctx, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, p).Err()
+		if err = pdb.client.HSet(ctx, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, p).Err(); err == nil {
+			if err = pdb.allowedIPsIndex.Set(ctx, p.AllowedIPs, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, 0).Err(); err == nil {
+				if err = pdb.nameIndex.Set(ctx, p.Name, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, 0).Err(); err == nil {
+					return nil
+				}
+			}
+		}
+		return err
 	} else {
 		return err
 	}
@@ -134,7 +157,7 @@ type GroupsDB struct {
 }
 
 func (pdb *GroupsDB) Connect(url string) error {
-	client, err := CreateRedisClient(url)
+	client, err := CreateRedisClient(url + "/1")
 	if err != nil {
 		return err
 	}
@@ -164,7 +187,7 @@ type SSISDB struct {
 }
 
 func (pdb *SSISDB) Connect(url string) error {
-	client, err := CreateRedisClient(url)
+	client, err := CreateRedisClient(url + "/2")
 	if err != nil {
 		return err
 	}

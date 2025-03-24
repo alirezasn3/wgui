@@ -150,15 +150,15 @@ func init() {
 	must(err)
 
 	// create redis client for peers
-	must(peersDB.Connect(config.RedisURL + "/0"))
+	must(peersDB.Connect(config.RedisURL))
 	log.Println("Connected to peers database")
 
 	// create redis client for groups
-	must(groupsDB.Connect(config.RedisURL + "/1"))
+	must(groupsDB.Connect(config.RedisURL))
 	log.Println("Connected to groups database")
 
 	// create redis client for ssis
-	must(ssisDB.Connect(config.RedisURL + "/2"))
+	must(ssisDB.Connect(config.RedisURL))
 	log.Println("Connected to ssis database")
 
 	// get peers from db
