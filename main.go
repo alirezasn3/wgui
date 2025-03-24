@@ -6,13 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
-	"strings"
 	sync "sync"
 	"time"
 
@@ -55,21 +53,15 @@ type Peer struct {
 // }
 
 type Group struct {
-	Name         string   `json:"Name" bson:"name"`
-	PeerIDs      []string `json:"PeerIDs" bson:"peerIDs"`
-	AllowedUsage int64    `json:"AllowedUsage" bson:"allowedUsage"`
-	TotalTX      int64    `json:"TotalTX" bson:"totalTX"`
-	TotalRX      int64    `json:"TotalRX" bson:"totalRX"`
-	ExpiresAt    int64    `json:"ExpiresAt" bson:"expiresAt"`
-	Disabled     bool     `json:"Disabled" bson:"disabled"`
+	Name         string   `json:"Name" redis:"name"`
+	Peers        []string `json:"Peers" redis:"peers"`
+	AllowedUsage int64    `json:"AllowedUsage" redis:"allowedUsage"`
+	TotalTX      int64    `json:"TotalTX" redis:"totalTX"`
+	TotalRX      int64    `json:"TotalRX" redis:"totalRX"`
+	ExpiresAt    int64    `json:"ExpiresAt" redis:"expiresAt"`
+	Disabled     bool     `json:"Disabled" redis:"disabled"`
 }
 
-type Groups struct {
-	groups map[string]string
-	mu     sync.RWMutex
-}
-
-var groups Groups
 var config Config         // used to store app configuration
 var wgc *wgctrl.Client    // used to interact with wireguard interfaces
 var deviceCIDR *net.IPNet // used to check if client is in device subnet
@@ -77,7 +69,12 @@ var peersDB = PeersDB{}   // used to interact with reids database
 var groupsDB = GroupsDB{} // used to interact with reids database
 var ssisDB = SSISDB{}     // used to interact with reids database
 var execDir string        // used to store the directory of the executable
-var ctx = context.TODO()
+var ctx = context.TODO()  // default context
+
+var publicKeyToPeerNameMap = make(map[string]string)
+var publicKeyToPeerNameMapMutex sync.RWMutex
+var publicKeyToGroupNameMap = make(map[string]string)
+var publicKeyToGroupNameMapMutex sync.RWMutex
 
 func must(returnValues ...interface{}) {
 	if returnValues[len(returnValues)-1] != nil {
@@ -227,7 +224,7 @@ func init() {
 		// save config file
 		must(os.WriteFile(filepath.Join(execDir, "Admin-0.conf"), []byte(fmt.Sprintf("[Interface]\nPrivateKey=%s\nAddress=%s\nDNS=1.1.1.1,8.8.8.8\n[Peer]\nPublicKey=%s\nAllowedIPs=0.0.0.0/0\nEndpoint=%s:%d\n", newPeer.PrivateKey, newPeer.AllowedIPs, device.PublicKey.String(), config.PublicAddress, device.ListenPort)), 0666))
 
-		log.Println("Saved config to "+filepath.Join(execDir, "Admin-0.conf"), slog.String("peer", "Admin-0"))
+		log.Println("Saved config to " + filepath.Join(execDir, "Admin-0.conf"))
 	}
 
 	// store new peer configurations
@@ -277,6 +274,7 @@ func main() {
 		var p wgtypes.Peer
 		var ok bool
 		var groupName string
+		var peerName string
 		var currentTX, currentRX int64
 		lastUsageMap := make(map[string][2]int64)
 		peersPipeline := peersDB.client.Pipeline()
@@ -290,14 +288,24 @@ func main() {
 			lastUsageMap[p.PublicKey.String()] = [2]int64{p.TransmitBytes, p.ReceiveBytes}
 		}
 
-		// populate groups
+		// populate public key to name map
+		peers, err := peersDB.GetAllPeers()
+		must(err)
+		publicKeyToPeerNameMapMutex.Lock()
+		for _, p := range peers {
+			publicKeyToPeerNameMap[p.PublicKey] = p.Name
+		}
+		publicKeyToPeerNameMapMutex.Unlock()
+
+		// populate public key to group name map
 		tempGroups, err := groupsDB.GetAllGroups()
 		must(err)
 		for _, g := range tempGroups {
-			parts := strings.Split(g.Name, ":")
-			groups.mu.Lock()
-			groups.groups[parts[2]] = g.Name
-			groups.mu.Unlock()
+			publicKeyToGroupNameMapMutex.Lock()
+			for _, pk := range g.Peers {
+				publicKeyToGroupNameMap[pk] = g.Name
+			}
+			publicKeyToGroupNameMapMutex.Unlock()
 		}
 
 		for {
@@ -328,16 +336,20 @@ func main() {
 				ssisPipeline.HSet(ctx, publicKey+":"+config.PublicAddress, "lastHandshake", p.LastHandshakeTime.UnixMilli())
 
 				// update total tx and rx on database
-				peersPipeline.HIncrBy(ctx, "*:"+publicKey, "totalTX", currentTX)
-				peersPipeline.HIncrBy(ctx, "*:"+publicKey, "totalRX", currentRX)
+				if peerName, ok = publicKeyToPeerNameMap[publicKey]; ok {
+					peersPipeline.HIncrBy(ctx, peerName+":"+p.AllowedIPs[0].String()+":"+publicKey, "totalTX", currentTX)
+					peersPipeline.HIncrBy(ctx, peerName+":"+p.AllowedIPs[0].String()+":"+publicKey, "totalRX", currentRX)
+				} else {
+					panic("failed to find peer name for public key: " + publicKey)
+				}
 
 				// update group usage if peer is in a group
-				groups.mu.RLock()
-				if groupName, ok = groups.groups[publicKey]; ok {
+				publicKeyToGroupNameMapMutex.RLock()
+				if groupName, ok = publicKeyToGroupNameMap[publicKey]; ok {
 					groupsPipeline.HIncrBy(ctx, groupName, "totalTX", currentTX)
 					groupsPipeline.HIncrBy(ctx, groupName, "totalRX", currentRX)
 				}
-				groups.mu.RUnlock()
+				publicKeyToGroupNameMapMutex.RUnlock()
 			}
 
 			// update peers

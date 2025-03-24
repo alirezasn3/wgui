@@ -13,7 +13,6 @@ import (
 )
 
 // peer key -> name:allowedIPs:publicKey
-// group key -> name:ownerID
 
 func GetPeers(ctx echo.Context) error {
 	peerRole := ctx.Get("peerRole").(string)
