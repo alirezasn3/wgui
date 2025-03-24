@@ -83,8 +83,6 @@ func must(returnValues ...interface{}) {
 }
 
 func init() {
-	groups.groups = make(map[string]string)
-
 	// check for install and uninstall commands on linux
 	if runtime.GOOS == "linux" {
 		if slices.Contains(os.Args, "--install") {
@@ -496,12 +494,12 @@ func main() {
 			for _, g = range groups {
 				if g.Disabled && g.TotalRX+g.TotalTX < g.AllowedUsage && startTime < g.ExpiresAt {
 					groupsPipeline.HSet(ctx, g.Name, "disabled", false)
-					for _, peerID = range g.PeerIDs {
+					for _, peerID = range g.Peers {
 						peersPipeline.HSet(ctx, peerID, "allowedUsage", g.AllowedUsage)
 					}
 				} else if !g.Disabled && (g.TotalRX+g.TotalTX > g.AllowedUsage || startTime > g.ExpiresAt) {
 					groupsPipeline.HSet(ctx, g.Name, "disabled", true)
-					for _, peerID = range g.PeerIDs {
+					for _, peerID = range g.Peers {
 						peersPipeline.HSet(ctx, peerID, "allowedUsage", 0)
 					}
 				}
