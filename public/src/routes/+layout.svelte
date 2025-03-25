@@ -51,9 +51,6 @@
 				href="/groups/all"
 				class="my-2 w-40 rounded bg-neutral-50 py-2 text-center text-neutral-950">GROUPS</a
 			>
-			<a href="/logs" class="my-2 w-40 rounded bg-neutral-50 py-2 text-center text-neutral-950"
-				>LOGS</a
-			>
 		</div>
 	{/if}
 	{#if $role !== 'user'}<nav
@@ -70,11 +67,6 @@
 					href="/groups/all"
 					class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
 					>GROUPS</a
-				>
-				<a
-					href="/logs"
-					class="rounded bg-neutral-50 px-4 py-2 font-semibold text-neutral-950 transition-colors hover:bg-neutral-300"
-					>LOGS</a
 				>
 			</div>
 			<button on:click={() => (showMenu = true)} class="relative md:hidden">

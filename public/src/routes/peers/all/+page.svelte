@@ -10,6 +10,7 @@
 
 	let peers: Peer[] = []
 	let combinedUsage = ''
+	let err = ''
 
 	$: combinedUsage = formatBytes(
 		peers.reduce((previous: number, current: Peer) => {
@@ -31,20 +32,26 @@
 				if (res.status === 200) {
 					data = await res.json()
 					// @ts-ignore
-					peers = (data.Peers as Peer[]).sort((a, b) => a.ExpiresAt - b.ExpiresAt)
+					peers = (data.peers as Peer[]).sort((a, b) => a.expiresAt - b.expiresAt)
 					// @ts-ignore
-					$role = data.Role
+					$role = data.role
 				} else {
 					console.log(res.statusText)
 				}
 				await sleep(1000)
 			}
 		} catch (error) {
+			err = (error as Error).message
 			console.log(error)
 		}
 	})
 </script>
 
+{#if err}
+	<div>
+		{err}
+	</div>
+{/if}
 {#if $role !== 'user'}
 	<div class="relative mb-2 flex items-center">
 		<input
@@ -81,7 +88,8 @@
 	{#if $search.length > 0}
 		<div class="mb-2 rounded border border-neutral-800 px-4 py-2">
 			Combined Usage: {combinedUsage}
-		</div>{/if}
+		</div>
+	{/if}
 {/if}
 
 <div class="w-full max-w-full overflow-x-auto bg-neutral-950">
