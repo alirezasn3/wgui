@@ -44,7 +44,7 @@ type Peer struct {
 	TotalTX        int64  `json:"totalTX" redis:"totalTX"`
 	TotalRX        int64  `json:"totalRX" redis:"totalRX"`
 	TelegramChatID int64  `json:"telegramChatID" redis:"telegramChatID"`
-	GroupID        string `json:"groupID" redis:"groupID"`
+	GroupName      string `json:"groupName" redis:"groupName"`
 }
 
 // type Peers struct {

@@ -9,7 +9,6 @@ export interface ServerSpecificInfo {
 }
 
 export interface Peer {
-	ID: string
 	role: string
 	name: string
 	allowedIPs: string
@@ -18,16 +17,14 @@ export interface Peer {
 	disabled: boolean
 	allowedUsage: number
 	expiresAt: number
-	lastHandshakeTime: string
 	totalTX: number
 	totalRX: number
 	serverSpecificInfo: ServerSpecificInfo[]
 	telegramChatID: number
-	groupID: string
+	groupName: string
 }
 
 export interface Group {
-	ID: string
 	name: string
 	peers: string[]
 	allowedUsage: number

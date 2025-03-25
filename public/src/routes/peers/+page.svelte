@@ -44,8 +44,8 @@
 			if (!key) return
 			res = await fetch('/api/peers/' + encodeURIComponent(key))
 			peer = await res.json()
-			if (peer?.groupID !== '000000000000000000000000') {
-				res = await fetch('/api/groups/' + peer?.groupID)
+			if (peer?.groupName !== '') {
+				res = await fetch('/api/groups/' + peer?.groupName)
 				group = await res.json()
 			}
 			while (!document.getElementById('canvas')) {
@@ -90,9 +90,12 @@
 
 			loading.set(true)
 
-			const res = await fetch('/api/peers/' + encodeURIComponent(peer.ID), {
-				method: 'DELETE'
-			})
+			const res = await fetch(
+				'/api/peers/' + encodeURIComponent(`${peer.name}:${peer.allowedIPs}:${peer.publicKey}`),
+				{
+					method: 'DELETE'
+				}
+			)
 			if (res.status === 200) {
 				await goto('/peers/all')
 			} else {
@@ -114,19 +117,22 @@
 
 			loading.set(true)
 
-			const res = await fetch('/api/peers/' + encodeURIComponent(peer.ID), {
-				method: 'PATCH',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					name: peer.name !== newName ? newName : undefined,
-					allowedUsage:
-						peer.allowedUsage / 1024000000 !== newAllowedUsage
-							? newAllowedUsage * 1024000000
-							: undefined,
-					expiresAt: expiresAtChanged ? Date.now() + newExpiresAt * 24 * 3600 * 1000 : undefined,
-					role: peer.role !== newRole ? newRole : undefined
-				})
-			})
+			const res = await fetch(
+				'/api/peers/' + encodeURIComponent(`${peer.name}:${peer.allowedIPs}:${peer.publicKey}`),
+				{
+					method: 'PATCH',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						name: peer.name !== newName ? newName : undefined,
+						allowedUsage:
+							peer.allowedUsage / 1024000000 !== newAllowedUsage
+								? newAllowedUsage * 1024000000
+								: undefined,
+						expiresAt: expiresAtChanged ? Date.now() + newExpiresAt * 24 * 3600 * 1000 : undefined,
+						role: peer.role !== newRole ? newRole : undefined
+					})
+				}
+			)
 			if (res.status === 200) {
 				if (peer.name !== newName) peer.name = newName
 				editing = false
@@ -220,9 +226,12 @@
 
 			loading.set(true)
 
-			const res = await fetch('/api/peers/' + encodeURIComponent(peer.ID), {
-				method: 'PUT'
-			})
+			const res = await fetch(
+				'/api/peers/' + encodeURIComponent(`${peer.name}:${peer.allowedIPs}:${peer.publicKey}`),
+				{
+					method: 'PUT'
+				}
+			)
 
 			if (res.status !== 200) error = res.statusText
 		} catch (e) {
@@ -241,13 +250,16 @@
 
 			loading.set(true)
 
-			const res = await fetch('/api/peers/' + encodeURIComponent(peer.ID), {
-				method: 'PATCH',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					expiresAt: Date.now() + 30 * 24 * 3600 * 1000
-				})
-			})
+			const res = await fetch(
+				'/api/peers/' + encodeURIComponent(`${peer.name}:${peer.allowedIPs}:${peer.publicKey}`),
+				{
+					method: 'PATCH',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({
+						expiresAt: Date.now() + 30 * 24 * 3600 * 1000
+					})
+				}
+			)
 
 			if (res.status !== 200) error = res.statusText
 		} catch (e) {
@@ -271,10 +283,10 @@
 		}
 	}
 
-	async function addPeerToGroup(groupID: string, groupName: string) {
+	async function addPeerToGroup(groupName: string) {
 		try {
 			if (peer === null) return
-			if (peer.groupID == '000000000000000000000000') {
+			if (peer.groupName === '') {
 				if (!window.confirm(`Add ${peer?.name} to ${groupName}? Peer's usage will be reset!`))
 					return
 			} else {
@@ -284,9 +296,12 @@
 					return
 			}
 			loading.set(true)
-			const res = await fetch(`/api/groups/${groupID}/${encodeURIComponent(peer.ID)}`, {
-				method: 'PUT'
-			})
+			const res = await fetch(
+				`/api/groups/${groupName}/${encodeURIComponent(`${peer.name}:${peer.allowedIPs}:${peer.publicKey}`)}`,
+				{
+					method: 'PUT'
+				}
+			)
 			if (res.status === 200) location.reload()
 			else error = res.statusText
 			while (!document.getElementById('canvas')) {
@@ -331,12 +346,14 @@
 			<div class="grid grid-cols-1 gap-2">
 				{#each groups as group}
 					<button
-						disabled={group.ID === peer.groupID}
-						class="w-full rounded border border-neutral-800 px-4 py-2 text-left {group.ID ===
-							peer.groupID && 'bg-neutral-800'}"
-						on:click={() => addPeerToGroup(group.ID, group.name)}
+						disabled={group.name === peer.groupName}
+						class="w-full rounded border border-neutral-800 px-4 py-2 text-left {group.name ===
+							peer.groupName && 'bg-neutral-800'}"
+						on:click={() => addPeerToGroup(group.name)}
 					>
-						{group.name} | {group.peers.length} peers {group.ID === peer.groupID ? '| current' : ''}
+						{group.name} | {group.peers.length} peers {group.name === peer.groupName
+							? '| current'
+							: ''}
 					</button>
 				{/each}
 			</div>
@@ -380,7 +397,7 @@
 								delete
 							</span>
 						</button>
-						{#if peer.groupID === '000000000000000000000000'}
+						{#if peer.groupName === ''}
 							<button on:click={resetPeerUsage}>
 								<span
 									class="material-symbols-outlined rounded-full border border-neutral-800 p-2 hover:cursor-pointer hover:bg-neutral-950"
@@ -468,7 +485,7 @@
 						placeholder="Preferred Endpoint"
 					/>
 				</div>
-				{#if peer.groupID === '000000000000000000000000'}
+				{#if peer.groupName === ''}
 					<div class="mb-2 flex w-full max-w-lg">
 						<input
 							bind:value={newAllowedUsage}
