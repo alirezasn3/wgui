@@ -30,7 +30,7 @@
 	let groups: Group[] = []
 	let group: Group | null = null
 
-	$: config = `[Interface]\nPrivateKey=${peer?.PrivateKey}\nAddress=${peer?.AllowedIPs}\nDNS=1.1.1.1,8.8.8.8\n[Peer]\nPublicKey=${serverPublicKey}\nAllowedIPs=0.0.0.0/0\nEndpoint=${selectedEndpoint}`
+	$: config = `[Interface]\nPrivateKey=${peer?.privateKey}\nAddress=${peer?.allowedIPs}\nDNS=1.1.1.1,8.8.8.8\n[Peer]\nPublicKey=${serverPublicKey}\nAllowedIPs=0.0.0.0/0\nEndpoint=${selectedEndpoint}`
 
 	onMount(async () => {
 		try {
@@ -44,8 +44,8 @@
 			if (!id) return
 			res = await fetch('/api/peers/' + encodeURIComponent(id))
 			peer = await res.json()
-			if (peer?.GroupID !== '000000000000000000000000') {
-				res = await fetch('/api/groups/' + peer?.GroupID)
+			if (peer?.groupID !== '000000000000000000000000') {
+				res = await fetch('/api/groups/' + peer?.groupID)
 				group = await res.json()
 			}
 			while (!document.getElementById('canvas')) {
@@ -86,7 +86,7 @@
 
 			if (!peer) return
 
-			if (!window.confirm(`Delete ${peer?.Name}?`)) return
+			if (!window.confirm(`Delete ${peer?.name}?`)) return
 
 			loading.set(true)
 
@@ -118,19 +118,17 @@
 				method: 'PATCH',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
-					name: peer.Name !== newName ? newName : undefined,
+					name: peer.name !== newName ? newName : undefined,
 					allowedUsage:
-						peer.AllowedUsage / 1024000000 !== newAllowedUsage
+						peer.allowedUsage / 1024000000 !== newAllowedUsage
 							? newAllowedUsage * 1024000000
 							: undefined,
 					expiresAt: expiresAtChanged ? Date.now() + newExpiresAt * 24 * 3600 * 1000 : undefined,
-					role: peer.Role !== newRole ? newRole : undefined,
-					preferredEndpoint:
-						peer.PreferredEndpoint !== newPreferredEndpoint ? newPreferredEndpoint : undefined
+					role: peer.role !== newRole ? newRole : undefined
 				})
 			})
 			if (res.status === 200) {
-				if (peer.Name !== newName) peer.Name = newName
+				if (peer.name !== newName) peer.name = newName
 				editing = false
 			} else {
 				error = res.statusText
@@ -170,18 +168,18 @@
 			})
 			ctx.font = '16px Roboto Mono'
 			ctx.fillStyle = '#023020'
-			const nameWidth = ctx.measureText(peer.Name).width
-			const allowedIPsWidth = ctx.measureText(peer.AllowedIPs).width
-			ctx.fillText(peer.Name, Math.round(360 - nameWidth / 2), 16)
-			ctx.fillText(peer.AllowedIPs, Math.round(360 - allowedIPsWidth / 2), 716)
+			const nameWidth = ctx.measureText(peer.name).width
+			const allowedIPsWidth = ctx.measureText(peer.allowedIPs).width
+			ctx.fillText(peer.name, Math.round(360 - nameWidth / 2), 16)
+			ctx.fillText(peer.allowedIPs, Math.round(360 - allowedIPsWidth / 2), 716)
 			const dataurl = canvas.toDataURL('image/png', 1)
 			await navigator.share({
-				title: peer?.Name,
+				title: peer?.name,
 				files: noImage
 					? undefined
-					: [dataURLtoFile(dataurl, `${peer?.Name.replaceAll('-', '')}.png`, 'image/png')],
+					: [dataURLtoFile(dataurl, `${peer?.name.replaceAll('-', '')}.png`, 'image/png')],
 				url: withTelegramBotLink
-					? `https://t.me/${telegramBotID}?start=${btoa(peer.PublicKey)}`
+					? `https://t.me/${telegramBotID}?start=${btoa(peer.publicKey)}`
 					: undefined
 			})
 		} catch (e) {
@@ -196,7 +194,7 @@
 			const file = new Blob([config], { type: 'application/octet-stream' })
 			const a = document.createElement('a')
 			a.href = URL.createObjectURL(file)
-			a.download = peer?.Name.replaceAll('-', '') + '.conf'
+			a.download = peer?.name.replaceAll('-', '') + '.conf'
 			a.click()
 		} catch (e) {
 			console.log(e)
@@ -276,12 +274,12 @@
 	async function addPeerToGroup(groupID: string, groupName: string) {
 		try {
 			if (peer === null) return
-			if (peer.GroupID == '000000000000000000000000') {
-				if (!window.confirm(`Add ${peer?.Name} to ${groupName}? Peer's usage will be reset!`))
+			if (peer.groupID == '000000000000000000000000') {
+				if (!window.confirm(`Add ${peer?.name} to ${groupName}? Peer's usage will be reset!`))
 					return
 			} else {
 				if (
-					!window.confirm(`Change ${peer?.Name} group to ${groupName}? Peer's usage will be reset!`)
+					!window.confirm(`Change ${peer?.name} group to ${groupName}? Peer's usage will be reset!`)
 				)
 					return
 			}
@@ -329,18 +327,16 @@
 					close
 				</span>
 			</button>
-			<div class="mb-4">Add {peer.Name} to :</div>
+			<div class="mb-4">Add {peer.name} to :</div>
 			<div class="grid grid-cols-1 gap-2">
 				{#each groups as group}
 					<button
-						disabled={group.ID === peer.GroupID}
+						disabled={group.ID === peer.groupID}
 						class="w-full rounded border border-neutral-800 px-4 py-2 text-left {group.ID ===
-							peer.GroupID && 'bg-neutral-800'}"
-						on:click={() => addPeerToGroup(group.ID, group.Name)}
+							peer.groupID && 'bg-neutral-800'}"
+						on:click={() => addPeerToGroup(group.ID, group.name)}
 					>
-						{group.Name} | {group.PeerIDs.length} peers {group.ID === peer.GroupID
-							? '| current'
-							: ''}
+						{group.name} | {group.peers.length} peers {group.ID === peer.groupID ? '| current' : ''}
 					</button>
 				{/each}
 			</div>
@@ -364,11 +360,10 @@
 								editing = true
 								if (peer) {
 									expiresAtChanged = false
-									newName = peer.Name
-									newAllowedUsage = peer.AllowedUsage / 1024000000
-									newExpiresAt = +((peer.ExpiresAt - Date.now()) / 1000 / 3600 / 24).toFixed(2)
-									newPreferredEndpoint = peer.PreferredEndpoint
-									newRole = peer.Role
+									newName = peer.name
+									newAllowedUsage = peer.allowedUsage / 1024000000
+									newExpiresAt = +((peer.expiresAt - Date.now()) / 1000 / 3600 / 24).toFixed(2)
+									newRole = peer.role
 								}
 							}}
 						>
@@ -385,7 +380,7 @@
 								delete
 							</span>
 						</button>
-						{#if peer.GroupID === '000000000000000000000000'}
+						{#if peer.groupID === '000000000000000000000000'}
 							<button on:click={resetPeerUsage}>
 								<span
 									class="material-symbols-outlined rounded-full border border-neutral-800 p-2 hover:cursor-pointer hover:bg-neutral-950"
@@ -473,7 +468,7 @@
 						placeholder="Preferred Endpoint"
 					/>
 				</div>
-				{#if peer.GroupID === '000000000000000000000000'}
+				{#if peer.groupID === '000000000000000000000000'}
 					<div class="mb-2 flex w-full max-w-lg">
 						<input
 							bind:value={newAllowedUsage}
@@ -531,45 +526,42 @@
 				</div>
 			{:else}
 				<div class="mb-2 flex items-center">
-					<div class="text-lg font-bold">{peer.Name}</div>
-					<div class="ml-1">{'('}{peer.Role}{')'}</div>
+					<div class="text-lg font-bold">{peer.name}</div>
+					<div class="ml-1">{'('}{peer.role}{')'}</div>
 				</div>
 				{#if $role !== 'user'}
 					<div class="mb-2 flex items-center">
-						<div>{peer.AllowedIPs}</div>
+						<div>{peer.allowedIPs}</div>
 					</div>
 				{/if}
-				<div class="mb-2">{formatExpiry(peer.ExpiresAt)}</div>
+				<div class="mb-2">{formatExpiry(peer.expiresAt)}</div>
 				<div class="mb-2">
-					{formatBytes(peer.TotalTX + peer.TotalRX)} / {formatBytes(peer.AllowedUsage)}
+					{formatBytes(peer.totalTX + peer.totalRX)} / {formatBytes(peer.allowedUsage)}
 				</div>
 				<div class="mb-2 flex">
 					<div class="mr-2 flex">
 						<span class="material-symbols-outlined mr-1"> arrow_upward </span>
 						<div>
-							{formatBytes(peer.TotalTX)}
+							{formatBytes(peer.totalTX)}
 						</div>
 					</div>
 					<div class="flex">
 						<span class="material-symbols-outlined mr-1"> arrow_downward </span>
 						<div>
-							{formatBytes(peer.TotalRX)}
+							{formatBytes(peer.totalRX)}
 						</div>
 					</div>
 				</div>
 			{/if}
-			{#if peer.PreferredEndpoint}
-				<div class="mb-2">{peer.PreferredEndpoint}</div>
-			{/if}
 			{#if !editing}
-				<div class="mb-2 {peer.TelegramChatID === 0 ? 'text-red-900' : 'text-blue-900'}">
-					Telegram Bot {peer.TelegramChatID === 0 ? 'Not Activated' : 'Activated'}
+				<div class="mb-2 {peer.telegramChatID === 0 ? 'text-red-900' : 'text-blue-900'}">
+					Telegram Bot {peer.telegramChatID === 0 ? 'Not Activated' : 'Activated'}
 				</div>
-				{#if peer.GroupID !== '000000000000000000000000'}
+				{#if peer.groupID !== '000000000000000000000000'}
 					<div class="mb-2">
 						Group:
 						<a href={'/groups?id=' + group?.ID} class="text-yellow-900">
-							{group?.Name}
+							{group?.name}
 						</a>
 					</div>
 				{/if}
@@ -601,32 +593,32 @@
 							<span>{showSSI ? 'HIDE' : 'SHOW'} SSIs</span>
 						</button>
 						<div class="mb-4 grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-							{#each peer.ServerSpecificInfo as ssi}
+							{#each peer.serverSpecificInfo as ssi}
 								<div class="rounded border border-neutral-800 px-4 py-2">
-									<div class="font-bold">{ssi.Address}</div>
+									<div class="font-bold">{ssi.address}</div>
 									<div class="flex">
 										<div class="mr-1">Endpoint:</div>
 										<div>
-											{!ssi.Endpoint || ssi.Endpoint === '<nil>' ? 'unknown' : ssi.Endpoint}
+											{!ssi.endpoint || ssi.endpoint === '<nil>' ? 'unknown' : ssi.endpoint}
 										</div>
 									</div>
 									<div class="flex">
 										<div class="mr-1">Last Handshake:</div>
 										<div>
-											{ssi.LastHandshakeTime || 'unknown'}
+											{ssi.lastHandshake || 'unknown'}
 										</div>
 									</div>
 									<div class="flex">
 										<div class="mr-2 flex">
 											<span class="material-symbols-outlined mr-1"> arrow_upward </span>
 											<div>
-												{formatBytes(ssi.CurrentTX)}
+												{formatBytes(ssi.tx)}
 											</div>
 										</div>
 										<div class="flex">
 											<span class="material-symbols-outlined mr-1"> arrow_downward </span>
 											<div>
-												{formatBytes(ssi.CurrentRX)}
+												{formatBytes(ssi.rx)}
 											</div>
 										</div>
 									</div>
@@ -651,13 +643,13 @@
 					<div class="overflow-hidden text-ellipsis">
 						<span class="text-purple-500">PrivateKey = </span>
 						<span class="text-orange-500">
-							{peer.PrivateKey}
+							{peer.privateKey}
 						</span>
 					</div>
 					<div>
 						<span class="text-purple-500">Address = </span>
 						<span class="text-blue-500">
-							{peer.AllowedIPs}
+							{peer.allowedIPs}
 						</span>
 					</div>
 					<div>

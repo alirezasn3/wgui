@@ -10,15 +10,14 @@
 
 	let peers: Peer[] = []
 	let combinedUsage = ''
-	let shouldUpdatePeers = true
 
 	$: combinedUsage = formatBytes(
 		peers.reduce((previous: number, current: Peer) => {
 			if (
-				current.Name.toLowerCase().includes($search.toLocaleLowerCase()) ||
-				current.AllowedIPs.includes($search)
+				current.name.toLowerCase().includes($search.toLocaleLowerCase()) ||
+				current.allowedIPs.includes($search)
 			)
-				return previous + current.TotalRX + current.TotalTX
+				return previous + current.totalRX + current.totalTX
 			return previous
 		}, 0)
 	)
@@ -100,24 +99,26 @@
 			<th class="px-2 py-2">Usage</th>
 		</thead>
 		<tbody>
-			{#each peers.filter((p) => !search || p.Name.toLowerCase().includes($search.toLowerCase()) || p.AllowedIPs.includes($search)) as peer, i}
+			{#each peers.filter((p) => !search || p.name
+						.toLowerCase()
+						.includes($search.toLowerCase()) || p.allowedIPs.includes($search)) as peer, i}
 				<tr
 					on:click={() => {
 						goto('/peers?id=' + encodeURIComponent(peer.ID))
 					}}
-					class="{peer.Disabled && peer.TotalRX + peer.TotalTX >= peer.AllowedUsage
+					class="{peer.disabled && peer.totalRX + peer.totalTX >= peer.allowedUsage
 						? 'bg-yellow-700 hover:bg-yellow-800'
-						: peer.Disabled
+						: peer.disabled
 							? 'bg-red-800 hover:bg-red-900'
-							: !peer.Disabled && peer.TotalRX + peer.TotalTX == 0
+							: !peer.disabled && peer.totalRX + peer.totalTX == 0
 								? 'bg-blue-900 hover:bg-blue-800'
 								: 'bg-neutral-900 hover:bg-neutral-800'} border-neutral-800 text-left odd:border-y hover:cursor-pointer"
 				>
 					<td class="px-2 py-1">{i + 1}</td>
-					<td class="whitespace-nowrap px-2 py-1">{peer.Name}</td>
-					<td class="whitespace-nowrap px-2 py-1">{formatExpiry(peer.ExpiresAt)}</td>
+					<td class="whitespace-nowrap px-2 py-1">{peer.name}</td>
+					<td class="whitespace-nowrap px-2 py-1">{formatExpiry(peer.expiresAt)}</td>
 					<td class="whitespace-nowrap px-2 py-1"
-						>{formatBytes(peer.TotalTX + peer.TotalRX)}/{formatBytes(peer.AllowedUsage)}</td
+						>{formatBytes(peer.totalTX + peer.totalRX)}/{formatBytes(peer.allowedUsage)}</td
 					>
 				</tr>
 			{/each}

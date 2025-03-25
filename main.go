@@ -53,13 +53,13 @@ type Peer struct {
 // }
 
 type Group struct {
-	Name         string   `json:"Name" redis:"name"`
-	Peers        []string `json:"Peers" redis:"peers"`
-	AllowedUsage int64    `json:"AllowedUsage" redis:"allowedUsage"`
-	TotalTX      int64    `json:"TotalTX" redis:"totalTX"`
-	TotalRX      int64    `json:"TotalRX" redis:"totalRX"`
-	ExpiresAt    int64    `json:"ExpiresAt" redis:"expiresAt"`
-	Disabled     bool     `json:"Disabled" redis:"disabled"`
+	Name         string   `json:"name" redis:"name"`
+	Peers        []string `json:"peers" redis:"peers"`
+	AllowedUsage int64    `json:"allowedUsage" redis:"allowedUsage"`
+	TotalTX      int64    `json:"totalTX" redis:"totalTX"`
+	TotalRX      int64    `json:"totalRX" redis:"totalRX"`
+	ExpiresAt    int64    `json:"expiresAt" redis:"expiresAt"`
+	Disabled     bool     `json:"disabled" redis:"disabled"`
 }
 
 var config Config         // used to store app configuration

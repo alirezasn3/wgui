@@ -1,67 +1,40 @@
 // place files you want to import through the `$lib` alias in this folder.
 
 export interface ServerSpecificInfo {
-	Address: string
-	LastHandshakeTime: string
-	Endpoint: string
-	CurrentTX: number
-	CurrentRX: number
+	address: string
+	lastHandshake: string
+	endpoint: string
+	tx: number
+	rx: number
 }
 
 export interface Peer {
 	ID: string
-	Role: string
-	Name: string
-	PreferredEndpoint: string
-	AllowedIPs: string
-	PublicKey: string
-	PrivateKey: string
-	Disabled: boolean
-	AllowedUsage: number
-	ExpiresAt: number
-	Endpoint: string
-	LastHandshakeTime: string
-	TotalTX: number
-	TotalRX: number
-	ServerSpecificInfo: ServerSpecificInfo[]
-	TelegramChatID: number
-	GroupID: string
-}
-
-export interface Log {
-	publicAddress: string
-	time: number
-	level: string
-	msg: string
-	peer: string
+	role: string
+	name: string
+	allowedIPs: string
+	publicKey: string
+	privateKey: string
+	disabled: boolean
+	allowedUsage: number
+	expiresAt: number
+	lastHandshakeTime: string
+	totalTX: number
+	totalRX: number
+	serverSpecificInfo: ServerSpecificInfo[]
+	telegramChatID: number
+	groupID: string
 }
 
 export interface Group {
-	Name: string
 	ID: string
-	PeerIDs: string[]
-	AllowedUsage: number
-	TotalTX: number
-	TotalRX: number
-	ExpiresAt: number
-	Disabled: boolean
-	OwnerID: string
-}
-
-export interface Device {
 	name: string
-	listenPort: number
-	peers: {
-		PublicKey: string
-		PresharedKey: string
-		Endpoint: { IP: string }
-		PersistentKeepaliveInterval: string
-		LastHandshakeTime: string
-		ReceiveBytes: number
-		TransmitBytes: number
-		AllowedIPs: { IP: string }[]
-		ProtocolVersion: number
-	}[]
+	peers: string[]
+	allowedUsage: number
+	totalTX: number
+	totalRX: number
+	expiresAt: number
+	disabled: boolean
 }
 
 export const formatExpiry = (expiresAt: number, noPrefix = false) => {
@@ -94,61 +67,3 @@ export const formatBytes = (totalBytes: number, space = true) => {
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-export const htmlLegendPlugin = {
-	id: 'htmlLegend',
-	afterUpdate(
-		chart: {
-			data: { datasets: { data: { [x: string]: any } }[] }
-			options: { plugins: { legend: { labels: { generateLabels: (arg0: any) => any } } } }
-			config: { type: any }
-			toggleDataVisibility: (arg0: any) => void
-			setDatasetVisibility: (arg0: any, arg1: boolean) => void
-			isDatasetVisible: (arg0: any) => any
-			update: () => void
-		},
-		args: any,
-		options: { containerID: string }
-	) {
-		const container = document.getElementById(options.containerID)
-		if (!container) return
-		container.innerHTML = ''
-		const items = chart.options.plugins.legend.labels.generateLabels(chart)
-		items.forEach(
-			(item: {
-				index: any
-				datasetIndex: any
-				fillStyle: string
-				strokeStyle: string
-				lineWidth: string
-				fontColor: string
-				hidden: any
-				text: string
-			}) => {
-				const div = document.createElement('div')
-				div.className = 'flex mb-2 hover:cursor-pointer'
-				div.onclick = () => {
-					const { type } = chart.config
-					if (type === 'pie' || type === 'doughnut') {
-						chart.toggleDataVisibility(item.index)
-					} else {
-						chart.setDatasetVisibility(
-							item.datasetIndex,
-							!chart.isDatasetVisible(item.datasetIndex)
-						)
-					}
-					chart.update()
-				}
-				const box = document.createElement('div')
-				box.style.backgroundColor = item.fillStyle
-				box.className = `w-6 h-6 mr-3 rounded-full`
-				const text = document.createElement('div')
-				text.style.color = item.fontColor
-				text.style.textDecoration = item.hidden ? 'line-through' : ''
-				text.innerText = `${item.text} (${chart.data.datasets[0].data[item.index]})`
-				div.appendChild(box)
-				div.appendChild(text)
-				container.appendChild(div)
-			}
-		)
-	}
-}

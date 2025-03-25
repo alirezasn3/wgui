@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -143,29 +142,23 @@ func (pdb *PeersDB) GetPeerByAllowedIPs(allowedIPs string) (*Peer, error) {
 func (pdb *PeersDB) CreatePeer(p Peer) error {
 	_, err := pdb.GetPeerByName(p.Name)
 	if err == nil {
-		fmt.Println(1)
 		return errors.New("duplicate peer name")
 	}
 	if err.Error() == "peer not found" {
-		fmt.Println(2)
 		err = pdb.client.HSet(ctx, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, p).Err()
 		if err != nil {
-			fmt.Println(3)
 			return err
 		}
 		err = pdb.allowedIPsIndex.Set(ctx, p.AllowedIPs, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, 0).Err()
 		if err != nil {
-			fmt.Println(4)
 			return err
 		}
 		err = pdb.nameIndex.Set(ctx, p.Name, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, 0).Err()
 		if err != nil {
-			fmt.Println(5)
 			return err
 		}
 		return nil
 	}
-	fmt.Println(6)
 	return err
 }
 
