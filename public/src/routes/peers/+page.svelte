@@ -40,9 +40,9 @@
 			endpoints = configData.endpoints
 			telegramBotID = configData.telegramBotID
 			selectedEndpoint = endpoints[0]
-			const id = $page.url.searchParams.get('id')
-			if (!id) return
-			res = await fetch('/api/peers/' + encodeURIComponent(id))
+			const key = $page.url.searchParams.get('key')
+			if (!key) return
+			res = await fetch('/api/peers/' + encodeURIComponent(key))
 			peer = await res.json()
 			if (peer?.groupID !== '000000000000000000000000') {
 				res = await fetch('/api/groups/' + peer?.groupID)
@@ -62,7 +62,7 @@
 						await sleep(1000)
 						continue
 					}
-					res = await fetch('/api/peers/' + encodeURIComponent(id))
+					res = await fetch('/api/peers/' + encodeURIComponent(key))
 					if (res.status === 200) {
 						peer = await res.json()
 						$loading = false
@@ -557,14 +557,14 @@
 				<div class="mb-2 {peer.telegramChatID === 0 ? 'text-red-900' : 'text-blue-900'}">
 					Telegram Bot {peer.telegramChatID === 0 ? 'Not Activated' : 'Activated'}
 				</div>
-				{#if peer.groupID !== '000000000000000000000000'}
+				<!-- {#if peer.groupID !== '000000000000000000000000'}
 					<div class="mb-2">
 						Group:
 						<a href={'/groups?id=' + group?.ID} class="text-yellow-900">
 							{group?.name}
 						</a>
 					</div>
-				{/if}
+				{/if} -->
 				<select
 					disabled={$role === 'user'}
 					bind:value={selectedEndpoint}

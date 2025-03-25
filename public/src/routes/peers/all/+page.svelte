@@ -112,7 +112,10 @@
 						.includes($search.toLowerCase()) || p.allowedIPs.includes($search)) as peer, i}
 				<tr
 					on:click={() => {
-						goto('/peers?id=' + encodeURIComponent(peer.ID))
+						goto(
+							'/peers?key=' +
+								encodeURIComponent(`${peer.name}:${peer.allowedIPs}:${peer.publicKey}`)
+						)
 					}}
 					class="{peer.disabled && peer.totalRX + peer.totalTX >= peer.allowedUsage
 						? 'bg-yellow-700 hover:bg-yellow-800'

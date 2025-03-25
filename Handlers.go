@@ -73,7 +73,7 @@ func GetPeer(ctx echo.Context) error {
 	peerName := ctx.Get("peerName").(string)
 
 	// decode uri
-	key, err := url.QueryUnescape(ctx.Param("id"))
+	key, err := url.QueryUnescape(ctx.Param("key"))
 	if err != nil {
 		return ctx.NoContent(400)
 	}
