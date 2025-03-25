@@ -142,17 +142,21 @@ func (pdb *PeersDB) CreatePeer(p Peer) error {
 		return errors.New("duplicate peer name")
 	}
 	if err.Error() == "peer not found" {
-		if err = pdb.client.HSet(ctx, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, p).Err(); err == nil {
-			if err = pdb.allowedIPsIndex.Set(ctx, p.AllowedIPs, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, 0).Err(); err == nil {
-				if err = pdb.nameIndex.Set(ctx, p.Name, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, 0).Err(); err == nil {
-					return nil
-				}
-			}
+		err = pdb.client.HSet(ctx, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, p).Err()
+		if err != nil {
+			return err
 		}
-		return err
-	} else {
-		return err
+		err = pdb.allowedIPsIndex.Set(ctx, p.AllowedIPs, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, 0).Err()
+		if err != nil {
+			return err
+		}
+		err = pdb.nameIndex.Set(ctx, p.Name, p.Name+":"+p.AllowedIPs+":"+p.PublicKey, 0).Err()
+		if err != nil {
+			return err
+		}
+		return nil
 	}
+	return err
 }
 
 func (pdb *PeersDB) ResetPeerUsage(key string) error {
