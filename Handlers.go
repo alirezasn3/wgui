@@ -96,8 +96,13 @@ func GetPeer(ctx echo.Context) error {
 		}
 	}
 
+	ssis, err := ssisDB.GetSSIS(peer.PublicKey)
+	if err != nil {
+		return ctx.String(500, err.Error())
+	}
+
 	// return peer
-	return ctx.JSON(200, peer)
+	return ctx.JSON(200, map[string]interface{}{"peer": peer, "ssis": ssis})
 }
 
 func GetGroup(ctx echo.Context) error {

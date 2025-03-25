@@ -47,6 +47,14 @@ type Peer struct {
 	GroupName      string `json:"groupName" redis:"groupName"`
 }
 
+type SSI struct {
+	Address       string `json:"address" redis:"address"`
+	LastHandshake string `json:"lastHandshake" redis:"lastHandshake"`
+	Endpoint      string `json:"endpoint" redis:"endpoint"`
+	TX            int64  `json:"tx" redis:"tx"`
+	RX            int64  `json:"rx" redis:"rx"`
+}
+
 // type Peers struct {
 // 	peers map[string]*Peer
 // 	mu    sync.RWMutex

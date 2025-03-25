@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -170,24 +171,24 @@ type GroupsDB struct {
 	client *redis.Client
 }
 
-func (pdb *GroupsDB) Connect(url string) error {
+func (gdb *GroupsDB) Connect(url string) error {
 	client, err := CreateRedisClient(url + "/1")
 	if err != nil {
 		return err
 	}
-	pdb.client = client
+	gdb.client = client
 	return nil
 }
 
-func (pdb *GroupsDB) GetAllGroups() ([]*Group, error) {
+func (gdb *GroupsDB) GetAllGroups() ([]*Group, error) {
 	var groups []*Group
-	keys, err := pdb.client.Keys(ctx, "*").Result()
+	keys, err := gdb.client.Keys(ctx, "*").Result()
 	if err != nil {
 		return nil, err
 	}
 	var g Group
 	for _, k := range keys {
-		err = pdb.client.HGetAll(ctx, k).Scan(&g)
+		err = gdb.client.HGetAll(ctx, k).Scan(&g)
 		if err != nil {
 			return nil, err
 		}
@@ -200,11 +201,29 @@ type SSISDB struct {
 	client *redis.Client
 }
 
-func (pdb *SSISDB) Connect(url string) error {
+func (sdb *SSISDB) Connect(url string) error {
 	client, err := CreateRedisClient(url + "/2")
 	if err != nil {
 		return err
 	}
-	pdb.client = client
+	sdb.client = client
 	return nil
+}
+
+func (sdb *SSISDB) GetSSIS(publicKey string) ([]*SSI, error) {
+	var ssis []*SSI
+	keys, err := sdb.client.Keys(ctx, publicKey+":*").Result()
+	if err != nil {
+		return nil, err
+	}
+	var ssi SSI
+	for _, k := range keys {
+		err = sdb.client.HGetAll(ctx, k).Scan(&ssi)
+		if err != nil {
+			return nil, err
+		}
+		ssi.Address = strings.Split(k, ":")[1]
+		ssis = append(ssis, &ssi)
+	}
+	return ssis, nil
 }
