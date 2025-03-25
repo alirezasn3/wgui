@@ -99,6 +99,9 @@ func (pdb *PeersDB) KeyExists(key string) (bool, error) {
 func (pdb *PeersDB) GetPeerByName(name string) (*Peer, error) {
 	key, err := pdb.nameIndex.Get(ctx, name).Result()
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, errors.New("peer not found")
+		}
 		return nil, err
 	}
 	var p Peer
