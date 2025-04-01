@@ -2,7 +2,7 @@
 
 export interface ServerSpecificInfo {
 	address: string
-	lastHandshake: string
+	lastHandshake: number
 	endpoint: string
 	tx: number
 	rx: number

@@ -43,7 +43,9 @@
 			const key = $page.url.searchParams.get('key')
 			if (!key) return
 			res = await fetch('/api/peers/' + encodeURIComponent(key))
-			peer = await res.json()
+			let data = await res.json()
+			peer = data.peer as Peer
+			peer.serverSpecificInfo = data.ssis
 			if (peer?.groupName !== '') {
 				res = await fetch('/api/groups/' + peer?.groupName)
 				group = await res.json()
@@ -64,7 +66,9 @@
 					}
 					res = await fetch('/api/peers/' + encodeURIComponent(key))
 					if (res.status === 200) {
-						peer = await res.json()
+						data = await res.json()
+						peer = data.peer as Peer
+						peer.serverSpecificInfo = data.ssis
 						$loading = false
 					} else {
 						console.log(res.statusText)
@@ -622,7 +626,8 @@
 									<div class="flex">
 										<div class="mr-1">Last Handshake:</div>
 										<div>
-											{ssi.lastHandshake || 'unknown'}
+											{((Date.now() - ssi.lastHandshake) / 1000).toFixed() + ' seconds ago' ||
+												'unknown'}
 										</div>
 									</div>
 									<div class="flex">

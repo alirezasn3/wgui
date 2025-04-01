@@ -50,7 +50,7 @@
 			})
 			if (res.status === 201) {
 				const id = await res.text()
-				await goto('/peers/?id=' + encodeURIComponent(id))
+				await goto('/peers/?key=' + encodeURIComponent(id))
 			} else error = res.statusText
 		} catch (e) {
 			console.log(e)

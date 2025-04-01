@@ -159,7 +159,7 @@ func PostPeers(ctx echo.Context) error {
 	}
 
 	// check for duplicate name
-	duplicateName, err := peersDB.KeyExists(newPeer.Name + ":*")
+	duplicateName, err := peersDB.KeyPatternExists(newPeer.Name + ":*")
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
