@@ -96,6 +96,17 @@ func (pdb *PeersDB) KeyExists(key string) (bool, error) {
 	return false, nil
 }
 
+func (pdb *PeersDB) KeyPatternExists(pattern string) (bool, error) {
+	keys, err := pdb.client.Keys(ctx, pattern).Result()
+	if err != nil {
+		return false, err
+	}
+	if len(keys) > 0 {
+		return true, nil
+	}
+	return false, nil
+}
+
 func (pdb *PeersDB) GetPeerByName(name string) (*Peer, error) {
 	key, err := pdb.nameIndex.Get(ctx, name).Result()
 	if err != nil {

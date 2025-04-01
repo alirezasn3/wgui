@@ -220,7 +220,7 @@ findIP:
 	var udpAddress *net.UDPAddr = nil
 
 	// check for duplicate allowedIPs
-	duplicateAllowedIPs, err := peersDB.KeyExists("*:" + newPeer.AllowedIPs + ":*")
+	duplicateAllowedIPs, err := peersDB.KeyPatternExists("*:" + newPeer.AllowedIPs + ":*")
 	if err != nil {
 		return ctx.String(500, err.Error())
 	}
