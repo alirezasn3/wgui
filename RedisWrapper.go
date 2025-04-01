@@ -57,8 +57,8 @@ func (pdb *PeersDB) GetAllPeers() ([]*Peer, error) {
 	if err != nil {
 		return nil, err
 	}
-	var p Peer
 	for _, k := range keys {
+		var p Peer
 		err = pdb.client.HGetAll(ctx, k).Scan(&p)
 		if err != nil {
 			return nil, err
