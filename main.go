@@ -295,10 +295,10 @@ func main() {
 		}
 
 		// populate public key to name map
-		peers, err := peersDB.GetAllPeers()
+		tempPeers, err := peersDB.GetAllPeers()
 		must(err)
 		publicKeyToPeerNameMapMutex.Lock()
-		for _, p := range peers {
+		for _, p := range tempPeers {
 			publicKeyToPeerNameMap[p.PublicKey] = p.Name
 		}
 		publicKeyToPeerNameMapMutex.Unlock()
@@ -479,6 +479,9 @@ func main() {
 			}
 
 			foundDevicePeer = nil
+
+			// sleep if 10 seconda has not passed
+			time.Sleep(time.Duration(10000-(time.Now().UnixMilli()-startTime.UnixMilli())) * time.Millisecond)
 		}
 	}()
 
@@ -523,8 +526,8 @@ func main() {
 				must(groupsPipeline.Exec(ctx))
 			}
 
-			// sleep if a second has not passed
-			time.Sleep(time.Duration(1000-(time.Now().UnixMilli()-startTime)) * time.Millisecond)
+			// sleep if 10 seconda has not passed
+			time.Sleep(time.Duration(10000-(time.Now().UnixMilli()-startTime)) * time.Millisecond)
 		}
 	}()
 

@@ -217,8 +217,6 @@ findIP:
 	}
 	newPeer.AllowedIPs = ip.ToString() + "/32"
 
-	var udpAddress *net.UDPAddr = nil
-
 	// check for duplicate allowedIPs
 	duplicateAllowedIPs, err := peersDB.KeyPatternExists("*:" + newPeer.AllowedIPs + ":*")
 	if err != nil {
@@ -242,7 +240,6 @@ findIP:
 	err = wgc.ConfigureDevice(config.InterfaceName, wgtypes.Config{Peers: []wgtypes.PeerConfig{{
 		PublicKey:  publicKey,
 		AllowedIPs: []net.IPNet{*allowedIPs},
-		Endpoint:   udpAddress,
 	}}})
 	if err != nil {
 		return ctx.String(500, err.Error())
