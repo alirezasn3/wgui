@@ -11,9 +11,11 @@ import (
 func Auth(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(ctx echo.Context) error {
 		// check for admin bypass
-		if ctx.Request().Header.Get("bypass_key") == config.BypassKey {
-			ctx.Set("bypass", true)
-			return next(ctx)
+		if config.BypassKey != "" {
+			if ctx.Request().Header.Get("bypass_key") == config.BypassKey {
+				ctx.Set("bypass", true)
+				return next(ctx)
+			}
 		}
 
 		ip := strings.Split(ctx.Request().RemoteAddr, ":")[0]
