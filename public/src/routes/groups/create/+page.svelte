@@ -42,8 +42,8 @@
 				})
 			})
 			if (res.status === 201) {
-				const id = await res.text()
-				await goto('/groups/?id=' + id)
+				const key = await res.text()
+				await goto('/groups/?key=' + key)
 			} else error = await res.text()
 		} catch (e) {
 			console.log(e)

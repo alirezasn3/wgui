@@ -243,27 +243,27 @@ func (gdb *GroupsDB) GetGroupByKey(key string) (*Group, error) {
 	return &g, err
 }
 
-func (gdb *GroupsDB) GetGroupByName(name string) (*Group, error) {
+func (gdb *GroupsDB) GetGroupByName(name string) (string, *Group, error) {
 	key, err := gdb.nameIndex.Get(ctx, name).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return nil, errors.New("group not found")
+			return "", nil, errors.New("group not found")
 		}
-		return nil, err
+		return "", nil, err
 	}
 
 	var g Group
 	err = gdb.client.HGetAll(ctx, key).Scan(&g)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	} else if g.Name == "" {
-		return nil, errors.New("group not found")
+		return "", nil, errors.New("group not found")
 	}
-	return &g, err
+	return key, &g, err
 }
 
 func (gdb *GroupsDB) CreateGroup(g Group, ownerKey string) error {
-	_, err := gdb.GetGroupByName(g.Name)
+	_, _, err := gdb.GetGroupByName(g.Name)
 	if err == nil {
 		return errors.New("duplicate group name")
 	}

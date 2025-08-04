@@ -32,21 +32,21 @@
 		<tbody>
 			{#each groups as group, i}
 				<tr
-					on:click={() => goto('/groups?id=' + encodeURIComponent(group.ID))}
-					class="{group.Disabled && group.TotalRX + group.TotalTX >= group.AllowedUsage
+					on:click={() => goto('/groups?name=' + encodeURIComponent(group.name))}
+					class="{group.disabled && group.totalRX + group.totalTX >= group.allowedUsage
 						? 'bg-yellow-700 hover:bg-yellow-800'
-						: group.Disabled
+						: group.disabled
 							? 'bg-red-800 hover:bg-red-900'
-							: !group.Disabled && group.TotalRX + group.TotalTX === 0
+							: !group.disabled && group.totalRX + group.totalTX === 0
 								? 'bg-blue-900 hover:bg-blue-800'
 								: 'bg-neutral-900 hover:bg-neutral-800'} border-neutral-800 text-left odd:border-y hover:cursor-pointer"
 				>
 					<td class="px-2 py-1">{i + 1}</td>
-					<td class="whitespace-nowrap px-2 py-1">{group.Name}</td>
-					<td class="whitespace-nowrap px-2 py-1">{group.PeerIDs.length}</td>
-					<td class="whitespace-nowrap px-2 py-1">{formatExpiry(group.ExpiresAt)}</td>
+					<td class="whitespace-nowrap px-2 py-1">{group.name}</td>
+					<td class="whitespace-nowrap px-2 py-1">{group.peers.length}</td>
+					<td class="whitespace-nowrap px-2 py-1">{formatExpiry(group.expiresAt)}</td>
 					<td class="whitespace-nowrap px-2 py-1"
-						>{formatBytes(group.TotalTX + group.TotalRX)}/{formatBytes(group.AllowedUsage)}</td
+						>{formatBytes(group.totalTX + group.totalRX)}/{formatBytes(group.allowedUsage)}</td
 					>
 				</tr>
 			{/each}

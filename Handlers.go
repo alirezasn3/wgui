@@ -104,23 +104,24 @@ func GetPeer(ctx echo.Context) error {
 func GetGroup(ctx echo.Context) error {
 	peerRole := ctx.Get("peerRole").(string)
 	peerID := ctx.Get("peerID").(string)
-	groupKey := ctx.Param("key")
-
-	// check read rights
-	if peerRole != "admin" {
-		if strings.Split(groupKey, ":")[1] != peerID {
-			return ctx.NoContent(403)
-		}
-	}
+	groupName := ctx.Param("name")
 
 	// check if group exists
-	group, err := groupsDB.GetGroupByKey(groupKey)
-	if err != nil {
-		return ctx.NoContent(404)
+	if groupName != "" {
+		key, group, err := groupsDB.GetGroupByName(groupName)
+		if err != nil {
+			return ctx.NoContent(404)
+		}
+		// check read rights
+		if peerRole != "admin" {
+			if strings.Split(key, ":")[1] != peerID {
+				return ctx.NoContent(403)
+			}
+		}
+		return ctx.JSON(200, group)
+	} else {
+		return ctx.NoContent(400)
 	}
-
-	// return peer
-	return ctx.JSON(200, group)
 }
 
 func PostPeers(ctx echo.Context) error {
