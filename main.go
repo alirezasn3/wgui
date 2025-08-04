@@ -585,7 +585,7 @@ func main() {
 	e.GET("/api/peers", GetPeers)
 	e.GET("/api/groups", GetGroups)
 	e.GET("/api/peers/:key", GetPeer)
-	e.GET("/api/groups/:key", GetGroup)
+	e.GET("/api/groups/:name", GetGroup)
 	e.POST("/api/peers", PostPeers)
 	e.POST("/api/groups", PostGroups)
 	e.DELETE("/api/peers/:key", DeletePeers)

@@ -6,7 +6,7 @@
 	import type { Writable } from 'svelte/store'
 	const loading: Writable<boolean> = getContext('loading')
 	const lastPageURL: Writable<URL | undefined> = getContext('lastPageURL')
-	let groupID: string | null = null
+	let groupName: string | null = null
 	let group: null | Group = null
 	let peers: Peer[] = []
 	let error = ''
@@ -17,14 +17,14 @@
 	let newExpiresAt = 0
 	onMount(async () => {
 		try {
-			groupID = $page.url.searchParams.get('id')
-			if (!groupID) return goto('/groups/all')
-			const res = await fetch('/api/groups/' + groupID)
+			groupName = $page.url.searchParams.get('name')
+			if (!groupName) return goto('/groups/all')
+			const res = await fetch('/api/groups/' + groupName)
 			if (res.status === 400 || res.status === 404) return goto('/groups/all')
 			group = await res.json()
 			if (!group) return
 			const results = await Promise.allSettled(
-				group.PeerIDs.map((id) => fetch('/api/peers/' + encodeURIComponent(id)))
+				group.peers.map((id) => fetch('/api/peers/' + encodeURIComponent(id)))
 			)
 			let temp: Peer[] = []
 			for (const r of results) {
@@ -46,11 +46,11 @@
 
 			if (!group) return
 
-			if (!window.confirm(`Delete ${group.Name}?`)) return
+			if (!window.confirm(`Delete ${group.name}?`)) return
 
 			loading.set(true)
 
-			const res = await fetch('/api/groups/' + group.ID, {
+			const res = await fetch('/api/groups/' + group.name, {
 				method: 'DELETE'
 			})
 			if (res.status === 200) {
@@ -72,11 +72,11 @@
 
 			if (!group) return
 
-			if (!window.confirm(`Delete ${name} from ${group.Name}?`)) return
+			if (!window.confirm(`Delete ${name} from ${group.name}?`)) return
 
 			loading.set(true)
 
-			const res = await fetch(`/api/groups/${group.ID}/${encodeURIComponent(id)}`, {
+			const res = await fetch(`/api/groups/${group.name}/${encodeURIComponent(id)}`, {
 				method: 'DELETE'
 			})
 			if (res.status === 200) location.reload()
@@ -97,7 +97,7 @@
 
 			loading.set(true)
 
-			const res = await fetch('/api/groups/' + group.ID, {
+			const res = await fetch('/api/groups/' + group.name, {
 				method: 'PUT'
 			})
 
@@ -119,7 +119,7 @@
 
 			loading.set(true)
 
-			const res = await fetch('/api/groups/' + group.ID, {
+			const res = await fetch('/api/groups/' + group.name, {
 				method: 'PATCH',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
@@ -145,13 +145,13 @@
 
 			loading.set(true)
 
-			const res = await fetch('/api/groups/' + group.ID, {
+			const res = await fetch('/api/groups/' + group.name, {
 				method: 'PATCH',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
-					name: group.Name !== newName ? newName : undefined,
+					name: group.name !== newName ? newName : undefined,
 					allowedUsage:
-						group.AllowedUsage / 1024000000 !== newAllowedUsage
+						group.allowedUsage / 1024000000 !== newAllowedUsage
 							? newAllowedUsage * 1024000000
 							: undefined,
 					expiresAt: expiresAtChanged ? Date.now() + newExpiresAt * 24 * 3600 * 1000 : undefined
@@ -264,9 +264,9 @@
 					if (!group) return
 					editing = true
 					expiresAtChanged = false
-					newName = group.Name
-					newAllowedUsage = group.AllowedUsage / 1024000000
-					newExpiresAt = +((group.ExpiresAt - Date.now()) / 1000 / 3600 / 24).toFixed(2)
+					newName = group.name
+					newAllowedUsage = group.allowedUsage / 1024000000
+					newExpiresAt = +((group.expiresAt - Date.now()) / 1000 / 3600 / 24).toFixed(2)
 				}}
 			>
 				<span
@@ -276,10 +276,10 @@
 				</span>
 			</button>
 		</div>
-		<div class="mb-4">{group.Name}</div>
-		<div class="mb-4">{formatExpiry(group.ExpiresAt)}</div>
+		<div class="mb-4">{group.name}</div>
+		<div class="mb-4">{formatExpiry(group.expiresAt)}</div>
 		<div class="mb-4">
-			{formatBytes(group.TotalRX + group.TotalTX)}/ {formatBytes(group.AllowedUsage)}
+			{formatBytes(group.totalRX + group.totalTX)}/ {formatBytes(group.allowedUsage)}
 		</div>
 		{#if peers.length}
 			<div class="w-full max-w-full overflow-x-auto bg-neutral-950">
@@ -297,18 +297,18 @@
 								on:click={() => {
 									goto('/peers?id=' + encodeURIComponent(peer.ID))
 								}}
-								class="{peer.Disabled && peer.TotalRX + peer.TotalTX >= peer.AllowedUsage
+								class="{peer.disabled && peer.totalRX + peer.totalTX >= peer.allowedUsage
 									? 'bg-yellow-700 hover:bg-yellow-800'
-									: peer.Disabled
+									: peer.disabled
 										? 'bg-red-800 hover:bg-red-900'
-										: !peer.Disabled && peer.TotalRX + peer.TotalTX == 0
+										: !peer.disabled && peer.totalRX + peer.totalTX == 0
 											? 'bg-blue-900 hover:bg-blue-800'
 											: 'bg-neutral-900 hover:bg-neutral-800'} border-neutral-800 text-left odd:border-y hover:cursor-pointer"
 							>
 								<td
 									class="flex items-center"
 									on:click|stopPropagation={() => {
-										deletePeerFromGroup(peer.Name, peer.ID)
+										deletePeerFromGroup(peer.name, peer.ID)
 									}}
 								>
 									<span class="material-symbols-outlined px-2 py-1 hover:text-red-900">
@@ -316,10 +316,10 @@
 									</span>
 								</td>
 								<td class="px-2 py-1">{i + 1}</td>
-								<td class="whitespace-nowrap px-2 py-1">{peer.Name}</td>
-								<td class="whitespace-nowrap px-2 py-1">{formatExpiry(peer.ExpiresAt)}</td>
+								<td class="whitespace-nowrap px-2 py-1">{peer.name}</td>
+								<td class="whitespace-nowrap px-2 py-1">{formatExpiry(peer.expiresAt)}</td>
 								<td class="whitespace-nowrap px-2 py-1"
-									>{formatBytes(peer.TotalTX + peer.TotalRX)}/{formatBytes(peer.AllowedUsage)}</td
+									>{formatBytes(peer.totalTX + peer.totalRX)}/{formatBytes(peer.allowedUsage)}</td
 								>
 							</tr>
 						{/each}
