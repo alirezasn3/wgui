@@ -23,26 +23,33 @@
 		}, 0)
 	)
 
-	onMount(async () => {
-		try {
-			let data
-			while (true) {
-				if ($loading) loading.set(false)
-				const res = await fetch('/api/peers')
-				if (res.status === 200) {
-					data = await res.json()
-					// @ts-ignore
-					peers = (data.peers as Peer[]).sort((a, b) => a.expiresAt - b.expiresAt)
-					// @ts-ignore
-					$role = data.role
-				} else {
-					console.log(res.statusText)
+	onMount(() => {
+		let shouldUpdate = true
+		;(async () => {
+			try {
+				let data
+				while (shouldUpdate) {
+					if ($loading) loading.set(false)
+					const res = await fetch('/api/peers')
+					if (res.status === 200) {
+						data = await res.json()
+						// @ts-ignore
+						peers = (data.peers as Peer[]).sort((a, b) => a.expiresAt - b.expiresAt)
+						// @ts-ignore
+						$role = data.role
+					} else {
+						console.log(res.statusText)
+					}
+					await sleep(1000)
 				}
-				await sleep(1000)
+			} catch (error) {
+				err = (error as Error).message
+				console.log(error)
 			}
-		} catch (error) {
-			err = (error as Error).message
-			console.log(error)
+		})()
+
+		return () => {
+			shouldUpdate = false
 		}
 	})
 </script>
