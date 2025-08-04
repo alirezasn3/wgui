@@ -21,6 +21,16 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
+type StringSlice []string
+
+func (ss StringSlice) MarshalBinary() ([]byte, error) {
+	return json.Marshal(ss)
+}
+
+func (ss *StringSlice) UnmarshalBinary(data []byte) error {
+	return json.Unmarshal(data, ss)
+}
+
 type Config struct {
 	RedisURL             string   `json:"redisURL"`
 	InterfaceName        string   `json:"interfaceName"`
@@ -61,13 +71,13 @@ type SSI struct {
 // }
 
 type Group struct {
-	Name         string   `json:"name" redis:"name"`
-	Peers        []string `json:"peers" redis:"peers"`
-	AllowedUsage int64    `json:"allowedUsage" redis:"allowedUsage"`
-	TotalTX      int64    `json:"totalTX" redis:"totalTX"`
-	TotalRX      int64    `json:"totalRX" redis:"totalRX"`
-	ExpiresAt    int64    `json:"expiresAt" redis:"expiresAt"`
-	Disabled     bool     `json:"disabled" redis:"disabled"`
+	Name         string      `json:"name" redis:"name"`
+	Peers        StringSlice `json:"peers" redis:"peers"`
+	AllowedUsage int64       `json:"allowedUsage" redis:"allowedUsage"`
+	TotalTX      int64       `json:"totalTX" redis:"totalTX"`
+	TotalRX      int64       `json:"totalRX" redis:"totalRX"`
+	ExpiresAt    int64       `json:"expiresAt" redis:"expiresAt"`
+	Disabled     bool        `json:"disabled" redis:"disabled"`
 }
 
 var config Config         // used to store app configuration
