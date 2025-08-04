@@ -262,9 +262,8 @@ func PostGroups(ctx echo.Context) error {
 	err = groupsDB.CreateGroup(data, peerID)
 	if err != nil {
 		if err.Error() == "duplicate group name" {
-			return ctx.String(400, "duplicate name")
+			return ctx.String(400, err.Error())
 		}
-	} else {
 		return ctx.String(500, err.Error())
 	}
 

@@ -42,8 +42,8 @@
 				})
 			})
 			if (res.status === 201) {
-				const key = await res.text()
-				await goto('/groups/?key=' + key)
+				const groupName = await res.text()
+				// await goto('/groups/?groupName=' + groupName)
 			} else error = await res.text()
 		} catch (e) {
 			console.log(e)
