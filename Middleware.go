@@ -33,6 +33,7 @@ func Auth(next echo.HandlerFunc) echo.HandlerFunc {
 			}
 			return ctx.String(500, err.Error())
 		}
+		ctx.Set("peerID", peer.Name+":"+peer.AllowedIPs+"+"+peer.PublicKey)
 		ctx.Set("peerName", peer.Name)
 		ctx.Set("peerRole", peer.Role)
 		ctx.Set("bypass", false)

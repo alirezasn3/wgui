@@ -179,7 +179,8 @@ func (pdb *PeersDB) ResetPeerUsage(key string) error {
 }
 
 type GroupsDB struct {
-	client *redis.Client
+	client    *redis.Client
+	nameIndex *redis.Client
 }
 
 func (gdb *GroupsDB) Connect(url string) error {
@@ -188,6 +189,12 @@ func (gdb *GroupsDB) Connect(url string) error {
 		return err
 	}
 	gdb.client = client
+
+	client, err = CreateRedisClient(url + "/10")
+	if err != nil {
+		return err
+	}
+	gdb.nameIndex = client
 	return nil
 }
 
@@ -206,6 +213,72 @@ func (gdb *GroupsDB) GetAllGroups() ([]*Group, error) {
 		groups = append(groups, &g)
 	}
 	return groups, nil
+}
+
+func (gdb *GroupsDB) GetOwnedGroups(ownerID string) ([]*Group, error) {
+	var groups []*Group
+	keys, err := gdb.client.Keys(ctx, "*:"+ownerID).Result()
+	if err != nil {
+		return nil, err
+	}
+	var g Group
+	for _, k := range keys {
+		err = gdb.client.HGetAll(ctx, k).Scan(&g)
+		if err != nil {
+			return nil, err
+		}
+		groups = append(groups, &g)
+	}
+	return groups, nil
+}
+
+func (gdb *GroupsDB) GetGroupByKey(key string) (*Group, error) {
+	var g Group
+	err := gdb.client.HGetAll(ctx, key).Scan(&g)
+	if err != nil {
+		return nil, err
+	} else if g.Name == "" {
+		return nil, errors.New("group not found")
+	}
+	return &g, err
+}
+
+func (gdb *GroupsDB) GetGroupByName(name string) (*Group, error) {
+	key, err := gdb.nameIndex.Get(ctx, name).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, errors.New("group not found")
+		}
+		return nil, err
+	}
+
+	var g Group
+	err = gdb.client.HGetAll(ctx, key).Scan(&g)
+	if err != nil {
+		return nil, err
+	} else if g.Name == "" {
+		return nil, errors.New("group not found")
+	}
+	return &g, err
+}
+
+func (gdb *GroupsDB) CreateGroup(g Group, ownerKey string) error {
+	_, err := gdb.GetGroupByName(g.Name)
+	if err == nil {
+		return errors.New("duplicate group name")
+	}
+	if err.Error() == "group not found" {
+		err = gdb.client.HSet(ctx, g.Name+":"+ownerKey, g).Err()
+		if err != nil {
+			return err
+		}
+		err = gdb.nameIndex.Set(ctx, g.Name, g.Name+":"+ownerKey, 0).Err()
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	return err
 }
 
 type SSISDB struct {

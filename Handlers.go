@@ -13,6 +13,7 @@ import (
 )
 
 // peer key -> name:allowedIPs:publicKey
+// group key -> name:ownerID
 
 func GetPeers(ctx echo.Context) error {
 	peerRole := ctx.Get("peerRole").(string)
@@ -37,34 +38,25 @@ func GetPeers(ctx echo.Context) error {
 }
 
 func GetGroups(ctx echo.Context) error {
-	// var peer Peer
-	// err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
-	// if err != nil {
-	// 	return ctx.String(500, err.Error())
-	// }
-	// groups := []*Group{}
-	// if peer.Role == "admin" {
-	// 	cursor, err := groupsCollection.Find(context.TODO(), bson.M{})
-	// 	if err != nil {
-	// 		return ctx.String(500, err.Error())
-	// 	}
-	// 	fmt.Println(4)
-	// 	if err = cursor.All(context.TODO(), &groups); err != nil {
-	// 		return ctx.String(500, err.Error())
-	// 	}
-	// } else {
-	// 	cursor, err := groupsCollection.Find(context.TODO(), bson.M{"ownerID": peer.ID})
-	// 	if err != nil {
-	// 		return ctx.String(500, err.Error())
-	// 	}
-	// 	if err = cursor.All(context.TODO(), &groups); err != nil {
-	// 		return ctx.String(500, err.Error())
-	// 	}
-	// }
+	peerRole := ctx.Get("peerRole").(string)
+	peerID := ctx.Get("peerID").(string)
 
-	// return ctx.JSON(200, groups)
+	var err error
+	var groups []*Group
 
-	return nil
+	if peerRole == "admin" {
+		groups, err = groupsDB.GetAllGroups()
+		if err != nil {
+			return ctx.String(500, err.Error())
+		}
+	} else {
+		groups, err = groupsDB.GetOwnedGroups(peerID)
+		if err != nil {
+			return ctx.String(500, err.Error())
+		}
+	}
+
+	return ctx.JSON(200, groups)
 }
 
 func GetPeer(ctx echo.Context) error {
@@ -106,36 +98,25 @@ func GetPeer(ctx echo.Context) error {
 }
 
 func GetGroup(ctx echo.Context) error {
-	// var peer Peer
-	// err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
-	// if err != nil {
-	// 	return ctx.String(500, err.Error())
-	// }
+	peerRole := ctx.Get("peerRole").(string)
+	peerID := ctx.Get("peerID").(string)
+	groupKey := ctx.Param("key")
 
-	// // parse id
-	// objectID, err := primitive.ObjectIDFromHex(ctx.Param("id"))
-	// if err != nil {
-	// 	return ctx.NoContent(400)
-	// }
+	// check read rights
+	if peerRole != "admin" {
+		if strings.Split(groupKey, ":")[1] != peerID {
+			return ctx.NoContent(403)
+		}
+	}
 
-	// // check if group exists
-	// var group Group
-	// err = groupsCollection.FindOne(context.TODO(), bson.M{"_id": objectID}).Decode(&group)
-	// if err != nil {
-	// 	return ctx.NoContent(404)
-	// }
+	// check if group exists
+	group, err := groupsDB.GetGroupByKey(groupKey)
+	if err != nil {
+		return ctx.NoContent(404)
+	}
 
-	// // check read rights
-	// if peer.Role != "admin" {
-	// 	if group.OwnerID != peer.ID {
-	// 		return ctx.NoContent(403)
-	// 	}
-	// }
-
-	// // return peer
-	// return ctx.JSON(200, group)
-
-	return nil
+	// return peer
+	return ctx.JSON(200, group)
 }
 
 func PostPeers(ctx echo.Context) error {
@@ -249,59 +230,40 @@ findIP:
 }
 
 func PostGroups(ctx echo.Context) error {
-	// var peer Peer
-	// err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
-	// if err != nil {
-	// 	return ctx.String(500, err.Error())
-	// }
+	peerRole := ctx.Get("peerRole").(string)
+	peerName := ctx.Get("peerName").(string)
+	peerID := ctx.Get("peerID").(string)
 
-	// neighboursPrefix := strings.Split(peer.Name, "-")[0]
+	if peerRole == "user" {
+		return ctx.NoContent(403)
+	}
 
-	// if peer.Role == "user" {
-	// 	return ctx.NoContent(403)
-	// }
+	// get group info from request body
+	var data Group
+	err := json.NewDecoder(ctx.Request().Body).Decode(&data)
+	if err != nil {
+		return ctx.String(400, err.Error())
+	}
 
-	// // get group info from request body
-	// var data Group
-	// err = json.NewDecoder(ctx.Request().Body).Decode(&data)
-	// if err != nil {
-	// 	return ctx.String(400, err.Error())
-	// }
+	// check if the requested peer is a neighbour of the user
+	neighboursPrefix := strings.Split(peerName, "-")[0]
+	if peerRole == "distributor" {
+		if !strings.HasPrefix(data.Name, neighboursPrefix+"-") {
+			return ctx.NoContent(403)
+		}
+	}
 
-	// // check if the requested peer is a neighbour of the user
-	// if peer.Role == "distributor" {
-	// 	if !strings.HasPrefix(data.Name, neighboursPrefix+"-") {
-	// 		return ctx.NoContent(403)
-	// 	}
-	// }
+	// add group to database
+	err = groupsDB.CreateGroup(data, peerID)
+	if err != nil {
+		if err.Error() == "duplicate group name" {
+			return ctx.String(400, "duplicate name")
+		}
+	} else {
+		return ctx.String(500, err.Error())
+	}
 
-	// // add group to database
-	// data.ID = primitive.NewObjectID()
-	// data.PeerIDs = []string{}
-	// data.Disabled = false
-	// data.TotalRX = 0
-	// data.TotalTX = 0
-	// data.OwnerID = peer.ID
-	// insertRes, err := groupsCollection.InsertOne(context.TODO(), data)
-	// if err != nil {
-	// 	// Check if the error is a duplicate key error
-	// 	if writeException, ok := err.(mongo.WriteException); ok {
-	// 		for _, writeError := range writeException.WriteErrors {
-	// 			if writeError.Code == 11000 {
-	// 				return ctx.String(400, "duplicate name")
-	// 			}
-	// 		}
-	// 	} else {
-	// 		logger.Error(err.Error(), slog.String("group", data.Name))
-	// 		return ctx.String(500, err.Error())
-	// 	}
-	// }
-
-	// logger.Info("Group Created", slog.String("group", data.Name))
-
-	// return ctx.String(201, insertRes.InsertedID.(primitive.ObjectID).Hex())
-
-	return nil
+	return ctx.String(201, data.Name+":"+peerID)
 }
 
 func DeletePeers(ctx echo.Context) error {
@@ -702,6 +664,7 @@ func PatchGroups(ctx echo.Context) error {
 	return nil
 }
 
+// put method is used to reset the usage of a peer
 func PutPeers(ctx echo.Context) error {
 	peerName := ctx.Get("peerName").(string)
 	peerRole := ctx.Get("peerRole").(string)
@@ -731,6 +694,7 @@ func PutPeers(ctx echo.Context) error {
 	return ctx.NoContent(200)
 }
 
+// put method is used to reset the usage of a group
 func PutGroups(ctx echo.Context) error {
 	// var peer Peer
 	// err := peersCollection.FindOne(context.TODO(), bson.M{"allowedIPs": ctx.Get("peerIP").(string) + "/32"}).Decode(&peer)
