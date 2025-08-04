@@ -249,6 +249,7 @@ func PostGroups(ctx echo.Context) error {
 	if err != nil {
 		return ctx.String(400, err.Error())
 	}
+	data.Peers = []string{}
 
 	// check if the requested peer is a neighbour of the user
 	neighboursPrefix := strings.Split(peerName, "-")[0]

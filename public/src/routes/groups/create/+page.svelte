@@ -42,8 +42,7 @@
 				})
 			})
 			if (res.status === 201) {
-				const groupName = await res.text()
-				await goto('/groups/?name=' + groupName)
+				await goto('/groups/?name=' + userRole === 'distributor' ? prefix + '-' + name : name)
 			} else error = await res.text()
 		} catch (e) {
 			console.log(e)
