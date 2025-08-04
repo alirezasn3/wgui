@@ -24,16 +24,21 @@ import (
 type StringSlice []string
 
 func (ss StringSlice) MarshalBinary() ([]byte, error) {
+	fmt.Println(ss)
 	if ss == nil {
 		ss = []string{}
 	}
+	fmt.Println(ss)
+	fmt.Println(json.Marshal(ss))
 	return json.Marshal(ss)
 }
 
 func (ss *StringSlice) UnmarshalBinary(data []byte) error {
+	fmt.Println(data)
 	if len(data) == 0 {
 		data = []byte("[]")
 	}
+	fmt.Println(data)
 	return json.Unmarshal(data, ss)
 }
 
