@@ -56,6 +56,10 @@ func GetGroups(ctx echo.Context) error {
 		}
 	}
 
+	if groups == nil {
+		groups = []*Group{}
+	}
+
 	return ctx.JSON(200, groups)
 }
 
