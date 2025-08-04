@@ -32,7 +32,7 @@ func (ss StringSlice) MarshalBinary() ([]byte, error) {
 
 func (ss *StringSlice) UnmarshalBinary(data []byte) error {
 	if len(data) == 0 {
-		data = []byte{}
+		data = []byte("[]")
 	}
 	return json.Unmarshal(data, ss)
 }
