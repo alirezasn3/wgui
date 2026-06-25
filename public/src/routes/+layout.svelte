@@ -1,4 +1,5 @@
 <script lang="ts">
+	import favicon from './favicon.png';
 	import { beforeNavigate } from '$app/navigation'
 	import '../app.css'
 	import { onMount, setContext } from 'svelte'
@@ -112,3 +113,7 @@
 		</div>
 	{/if}
 </div>
+
+<svelte:head>
+	<link rel="icon" href={favicon} />
+</svelte:head>
