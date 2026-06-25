@@ -6,8 +6,8 @@
 	const loading: Writable<boolean> = getContext('loading')
 
 	let name = ''
-	let allowedUsage = 30
-	let expiresAt = 30
+	let allowedUsage = 10
+	let expiresAt = 100
 	let preferredEndpoint = ''
 	let error = ''
 	let role = 'user'

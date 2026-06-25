@@ -36,7 +36,11 @@
 					ab = await res.arrayBuffer()
 					data = PBPeers.decode(new Uint8Array(ab), ab.byteLength)
 					// @ts-ignore
-					peers = (data.Peers as Peer[]).sort((a, b) => a.ExpiresAt - b.ExpiresAt)
+					peers = (data.Peers as Peer[]).sort((a, b) => {
+						const diff = a.ExpiresAt - b.ExpiresAt
+						if (diff !== 0) return diff
+						return a.name.localeCompare(b.name)
+					})
 					// @ts-ignore
 					$role = data.Role
 				} else {
