@@ -39,7 +39,7 @@
 					peers = (data.Peers as Peer[]).sort((a, b) => {
 						const diff = a.ExpiresAt - b.ExpiresAt
 						if (diff !== 0) return diff
-						return a.name.localeCompare(b.name)
+						return a.Name.localeCompare(b.Name)
 					})
 					// @ts-ignore
 					$role = data.Role
