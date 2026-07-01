@@ -85,7 +85,6 @@ func GetGroups(ctx echo.Context) error {
 		if err != nil {
 			return ctx.String(500, err.Error())
 		}
-		fmt.Println(4)
 		if err = cursor.All(context.TODO(), &groups); err != nil {
 			return ctx.String(500, err.Error())
 		}
