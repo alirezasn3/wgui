@@ -1,0 +1,77 @@
+# Builds and publishes the Linux binaries whenever a version tag is pushed.
+# `make release TAG=v2.0.0` is the usual way to trigger it.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # so `git describe` sees the tags
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: cd web && npm ci
+
+      - name: Test
+        run: |
+          go test ./...
+          cd web && npm run check
+
+      - name: Build
+        run: make dist
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/wgui-linux-amd64
+            dist/wgui-linux-arm64
+            dist/config.example.json
+            dist/SHA256SUMS
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            Nothing else is needed — no Go, no Node, no database server. Binaries
+            are built for `amd64` and `arm64`; the first line picks the right one.
+
+            ```bash
+            ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+            BASE=https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}
+
+            curl -fsSLO $BASE/wgui-linux-$ARCH
+            curl -fsSLO $BASE/SHA256SUMS
+            sha256sum --check --ignore-missing SHA256SUMS
+
+            sudo install -Dm755 wgui-linux-$ARCH /opt/wgui/wgui
+            curl -fsSL $BASE/config.example.json | sudo tee /opt/wgui/config.json > /dev/null
+            sudo nano /opt/wgui/config.json      # set interfaceName and the subnet
+
+            cd /opt/wgui && sudo ./wgui --install   # writes, enables and starts the service
+            ```
+
+            Then import `/opt/wgui/admin.conf` on your own machine, bring the
+            tunnel up, and open the panel at the server's tunnel address.
+
+            **Upgrading:** replace the binary and `sudo systemctl restart wgui`. The
+            database and certificate are left alone and the schema migrates itself.
+            Upgrade a master and its nodes together.

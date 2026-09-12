@@ -1,0 +1,197 @@
+@import 'tailwindcss';
+
+/*
+ * Dark by default, like the panel this one is modelled on. The light palette is
+ * opt-in through the theme switch, which stamps data-theme on <html>.
+ */
+:root {
+	color-scheme: dark;
+
+	--bg: #0e1014;
+	--surface: #161920;
+	--surface-2: #1c202a;
+	--surface-3: #232834;
+	--border: #272c38;
+	--border-strong: #333a49;
+
+	--text: #e7eaf0;
+	--text-muted: #8d96a8;
+	--text-faint: #5e6779;
+
+	--primary: #3b7ff5;
+	--primary-hover: #5590f7;
+	--primary-soft: #17233d;
+
+	--success: #3fb950;
+	--success-soft: #10241a;
+	--warning: #d8a029;
+	--warning-soft: #2a2110;
+	--danger: #f0553f;
+	--danger-soft: #2e1614;
+	--info: #38a9c9;
+	--info-soft: #11242b;
+}
+
+:root[data-theme='light'] {
+	color-scheme: light;
+
+	--bg: #f4f6fa;
+	--surface: #ffffff;
+	--surface-2: #f7f9fc;
+	--surface-3: #eef1f6;
+	--border: #e2e6ee;
+	--border-strong: #cdd4e0;
+
+	--text: #182030;
+	--text-muted: #5d6779;
+	--text-faint: #8a94a6;
+
+	--primary: #2563eb;
+	--primary-hover: #1d4ed8;
+	--primary-soft: #e6edfd;
+
+	--success: #1a7f37;
+	--success-soft: #e3f5e8;
+	--warning: #9a6700;
+	--warning-soft: #fbf0d9;
+	--danger: #cf222e;
+	--danger-soft: #fceaea;
+	--info: #0e7490;
+	--info-soft: #e0f2f7;
+}
+
+@theme inline {
+	--color-bg: var(--bg);
+	--color-surface: var(--surface);
+	--color-surface-2: var(--surface-2);
+	--color-surface-3: var(--surface-3);
+	--color-border: var(--border);
+	--color-border-strong: var(--border-strong);
+	--color-text: var(--text);
+	--color-muted: var(--text-muted);
+	--color-faint: var(--text-faint);
+	--color-primary: var(--primary);
+	--color-primary-hover: var(--primary-hover);
+	--color-primary-soft: var(--primary-soft);
+	--color-success: var(--success);
+	--color-success-soft: var(--success-soft);
+	--color-warning: var(--warning);
+	--color-warning-soft: var(--warning-soft);
+	--color-danger: var(--danger);
+	--color-danger-soft: var(--danger-soft);
+	--color-info: var(--info);
+	--color-info-soft: var(--info-soft);
+
+	--font-sans:
+		ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+	--font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+html,
+body {
+	background: var(--bg);
+	color: var(--text);
+}
+
+body {
+	font-family: var(--font-sans);
+	-webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbars that do not fight the dark surfaces. */
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+	background: var(--border-strong);
+	border-radius: 999px;
+	border: 2px solid transparent;
+	background-clip: content-box;
+}
+*::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+@layer components {
+	.btn {
+		@apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-md border px-3 py-1.5
+			text-sm font-medium whitespace-nowrap transition-colors select-none;
+		@apply disabled:pointer-events-none disabled:opacity-45;
+	}
+	.btn-primary {
+		background: var(--primary);
+		border-color: var(--primary);
+		color: #fff;
+	}
+	.btn-primary:hover:not(:disabled) {
+		background: var(--primary-hover);
+		border-color: var(--primary-hover);
+	}
+	.btn-default {
+		background: var(--surface-2);
+		border-color: var(--border-strong);
+		color: var(--text);
+	}
+	.btn-default:hover:not(:disabled) {
+		background: var(--surface-3);
+	}
+	.btn-danger {
+		background: transparent;
+		border-color: var(--danger);
+		color: var(--danger);
+	}
+	.btn-danger:hover:not(:disabled) {
+		background: var(--danger-soft);
+	}
+	.btn-ghost {
+		@apply border-transparent bg-transparent;
+		color: var(--text-muted);
+	}
+	.btn-ghost:hover:not(:disabled) {
+		background: var(--surface-3);
+		color: var(--text);
+	}
+	.btn-sm {
+		@apply px-2 py-1 text-xs;
+	}
+	.btn-icon {
+		@apply h-7 w-7 rounded-md p-0;
+	}
+
+	.field {
+		@apply w-full rounded-md border px-3 py-1.5 text-sm outline-none transition-colors;
+		background: var(--surface-2);
+		border-color: var(--border-strong);
+		color: var(--text);
+	}
+	.field:focus {
+		border-color: var(--primary);
+		box-shadow: 0 0 0 3px var(--primary-soft);
+	}
+	.field::placeholder {
+		color: var(--text-faint);
+	}
+	.field:disabled {
+		@apply cursor-not-allowed opacity-60;
+	}
+
+	.label {
+		@apply mb-1 block text-xs font-medium;
+		color: var(--text-muted);
+	}
+
+	.card {
+		@apply rounded-lg border;
+		background: var(--surface);
+		border-color: var(--border);
+	}
+
+	.tag {
+		@apply inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium whitespace-nowrap;
+	}
+}

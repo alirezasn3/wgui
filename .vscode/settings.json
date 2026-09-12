@@ -1,0 +1,16 @@
+{
+    "files.exclude": {
+        "**/.npmrc": true,
+        "**/node_modules": true,
+        "**/.svelte-kit": true,
+        "**/.prettierignore": true,
+        "**/.prettierrc": true,
+        "**/package-lock.json": true,
+        "**/postcss.config.js": true,
+        "**/svelte.config.js": true,
+        "**/tailwind.config.js": true,
+        "**/tsconfig.json": true,
+        "**/vite.config.ts": true,
+        "**/go.sum": true,
+    }
+}

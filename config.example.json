@@ -1,0 +1,20 @@
+{
+  "dbPath": "wgui.db",
+  "interfaceName": "wg0",
+  "interfaceAddress": "10.0.0.1",
+  "interfaceAddressCIDR": "10.0.0.0/24",
+  "listenAddress": "0.0.0.0:443",
+  "tls": {
+    "cert": "",
+    "key": "",
+    "ephemeral": false
+  },
+  "bypassKey": "",
+  "master": {
+    "url": "",
+    "secret": "",
+    "fingerprint": "",
+    "insecure": false,
+    "intervalSeconds": 15
+  }
+}

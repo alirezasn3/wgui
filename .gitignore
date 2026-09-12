@@ -1,0 +1,19 @@
+config.json
+/certs
+
+# Build output. The Makefile writes these into the repository root.
+/wgui
+/wgui-linux-*
+/dist/
+wgui.exe
+*.db
+*.db-shm
+*.db-wal
+admin.conf
+
+# Built frontend, embedded at build time by web/embed.go.
+/web/build/*
+!/web/build/.gitkeep
+
+# macOS
+.DS_Store
