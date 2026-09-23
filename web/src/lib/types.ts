@@ -203,6 +203,40 @@ export type PeerBulkAction =
 	| 'setRole'
 	| 'delete';
 
+/** A published release newer than the one running. */
+export interface UpdateRelease {
+	version: string;
+	name: string;
+	/** The release's changelog, in Markdown. */
+	notes: string;
+	url: string;
+	publishedAt: string;
+}
+
+/** An update being installed. */
+export interface UpdateJob {
+	state: 'idle' | 'downloading' | 'verifying' | 'installing' | 'restarting' | 'failed';
+	version?: string;
+	done: number;
+	total: number;
+	error?: string;
+}
+
+/** What this server knows about newer releases of itself. */
+export interface UpdateStatus {
+	current: string;
+	/** The newest published release, '' until a check has succeeded. */
+	latest: string;
+	available: boolean;
+	/** Every release newer than this one, newest first. */
+	releases: UpdateRelease[];
+	checkedAt: number;
+	checkError?: string;
+	/** Why this server cannot install an update itself, when it cannot. */
+	unsupported?: string;
+	job: UpdateJob;
+}
+
 /** Kernel settings the panel can read and change on the server it runs on. */
 export interface SystemStatus {
 	supported: boolean; // false off Linux

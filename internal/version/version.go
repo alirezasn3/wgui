@@ -13,6 +13,12 @@ var (
 	Version = "dev"
 	Commit  = ""
 	Date    = ""
+	// Repo is the GitHub repository releases are published to, which is where
+	// the panel looks for updates. A fork that publishes its own releases sets
+	// it at link time.
+	Repo = "alirezasn3/wgui"
+	// ReleaseAPI is the GitHub API that Repo's releases are read from.
+	ReleaseAPI = "https://api.github.com"
 )
 
 // String is the one-line identity printed by --version.

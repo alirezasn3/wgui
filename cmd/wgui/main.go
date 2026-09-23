@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"wgui/internal/scripts"
 	"wgui/internal/store"
 	"wgui/internal/system"
+	"wgui/internal/update"
 	"wgui/internal/version"
 	"wgui/internal/wgdev"
 )
@@ -48,7 +50,12 @@ func main() {
 		return
 	}
 
-	if err := run(options{
+	// Where this binary lives has to be read now: once an update has replaced
+	// the file, the kernel reports the running process's executable as
+	// deleted, and the update needs the path to start the new one from.
+	self, selfErr := resolveSelf()
+
+	err := run(options{
 		install:    *install,
 		uninstall:  *uninstall,
 		repair:     *repair,
@@ -58,10 +65,48 @@ func main() {
 		groupsFile: *groupsFile,
 		force:      *force,
 		verbose:    *verbose,
-	}); err != nil {
+		self:       self,
+	})
+	if errors.Is(err, errRestart) {
+		restartInto(self, selfErr)
+	}
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
+}
+
+// updatePlatform is the operating system the updater fetches releases for;
+// empty means this one. Only the updatee2e build sets it, see update_e2e.go.
+var updatePlatform string
+
+// errRestart is how run says an update has been installed and this process
+// should become the new binary.
+var errRestart = errors.New("restarting into the update")
+
+// resolveSelf is the path of the running binary, with symlinks followed so the
+// update replaces the file itself rather than a link to it.
+func resolveSelf() (string, error) {
+	p, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(p)
+}
+
+// restartInto replaces this process with the binary now at self, keeping its
+// arguments, environment and process ID — so systemd sees the same service
+// carry on rather than one that stopped. If that cannot be done, exiting with
+// an error has systemd start the service again, which runs the new binary all
+// the same.
+func restartInto(self string, resolveErr error) {
+	if resolveErr != nil {
+		fmt.Fprintln(os.Stderr, "error: cannot restart into the update:", resolveErr)
+		os.Exit(1)
+	}
+	err := syscall.Exec(self, os.Args, os.Environ())
+	fmt.Fprintln(os.Stderr, "error: cannot restart into the update:", err)
+	os.Exit(1)
 }
 
 // options collects the command line, so adding a flag does not mean threading
@@ -76,6 +121,9 @@ type options struct {
 	groupsFile string
 	force      bool
 	verbose    bool
+	// self is the running binary's path, for updates. Empty when it could not
+	// be determined, which leaves updating unavailable rather than guessing.
+	self string
 }
 
 func run(opt options) error {
@@ -173,8 +221,32 @@ func run(opt options) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	go eng.Run(ctx)
+	engineDone := make(chan struct{})
+	go func() {
+		eng.Run(ctx)
+		close(engineDone)
+	}()
 	go monitor.NewWatcher(st, runner, log).Run(ctx)
+
+	// An installed update asks for a restart; it is carried out below, after
+	// the same orderly shutdown a stop gets, so no counted traffic is lost.
+	restart := make(chan struct{})
+	var restartOnce sync.Once
+	updater := update.New(update.Options{
+		Repo:    version.Repo,
+		API:     version.ReleaseAPI,
+		GOOS:    updatePlatform,
+		Current: version.Short(),
+		Exe:     opt.self,
+		Log:     log,
+		Backup: func(v string) (string, error) {
+			path := cfg.Resolve(cfg.DBPath) + ".before-" + v
+			return path, st.Backup(path)
+		},
+		Restart: func() { restartOnce.Do(func() { close(restart) }) },
+	})
+	srv.SetUpdater(updater)
+	go updater.Run(ctx)
 
 	// A server with a master is a node: it serves that master's peers and
 	// reports what it has counted, rather than being edited in its own right.
@@ -222,20 +294,35 @@ func run(opt options) error {
 		serveErr <- e.StartTLS(cfg.ListenAddress, certPEM, keyPEM)
 	}()
 
+	restarting := false
 	select {
 	case err := <-serveErr:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
+		return nil
 	case <-ctx.Done():
 		log.Info("shutting down")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := e.Shutdown(shutdownCtx); err != nil {
-			log.Error("shutdown failed", "error", err)
-		}
-		// Give the engine a moment to flush the traffic it has accumulated.
-		time.Sleep(500 * time.Millisecond)
+	case <-restart:
+		log.Info("shutting down to restart into the update")
+		restarting = true
+	}
+
+	stop()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := e.Shutdown(shutdownCtx); err != nil {
+		log.Error("shutdown failed", "error", err)
+	}
+	// The engine writes what it has counted since the last flush on its way
+	// out; wait for that rather than for a guess at how long it takes.
+	select {
+	case <-engineDone:
+	case <-time.After(10 * time.Second):
+		log.Error("the engine did not finish its final flush in time")
+	}
+	if restarting {
+		return errRestart
 	}
 	return nil
 }

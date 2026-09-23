@@ -5,6 +5,7 @@
 	import LimitInput from '$lib/components/LimitInput.svelte';
 	import QrCode from '$lib/components/QrCode.svelte';
 	import SystemTuning from '$lib/components/SystemTuning.svelte';
+	import Updates from '$lib/components/Updates.svelte';
 	import { bytesToGib, gibToBytes } from '$lib/format';
 	import type { Settings } from '$lib/types';
 	import { onMount } from 'svelte';
@@ -93,6 +94,8 @@
 	</div>
 {:else if settings}
 	<div class="grid max-w-3xl gap-4">
+		<Updates />
+
 		<section class="card p-4">
 			<h2 class="mb-3 text-sm font-semibold">Server</h2>
 			<div class="space-y-4">

@@ -12,7 +12,8 @@ import type {
 	Script,
 	ScriptRun,
 	Settings,
-	SystemStatus
+	SystemStatus,
+	UpdateStatus
 } from './types';
 
 export class ApiError extends Error {
@@ -138,6 +139,13 @@ export const api = {
 	status: () => request<ServerStatus>('/status'),
 
 	system: () => request<SystemStatus>('/system'),
+	updateStatus: () => request<UpdateStatus>('/update'),
+	checkForUpdate: () => request<UpdateStatus>('/update/check', { method: 'POST' }),
+	installUpdate: (version: string) =>
+		request<UpdateStatus>('/update/install', {
+			method: 'POST',
+			body: JSON.stringify({ version })
+		}),
 	networkRules: () => request<{ rules: RuleSet[] }>('/system/network'),
 	enableIPForwarding: () => request<SystemStatus>('/system/ip-forwarding', { method: 'POST' }),
 	setCongestion: (algorithm: string) =>

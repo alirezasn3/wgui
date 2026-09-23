@@ -38,6 +38,9 @@ able to reach the panel at all already proves you hold a valid key.
   where each peer is connected.
 - **Server traffic** — what each server carried over the last hour, day, week
   and month, with a reset.
+- **Updates from the panel** — a notice when a new release is out, its
+  changelog, and an install that checks the download before swapping it in and
+  keeps the previous version to go back to.
 
 ## Installing
 
@@ -113,9 +116,10 @@ from the panel.
 
 ### Upgrading
 
-Download the new binary the same way, replace the old one and restart. The
-database, certificate and settings are left alone, and the schema migrates
-itself on start.
+From v2.1.0 on, an admin can update from the panel; see
+[Updating from the panel](#updating-from-the-panel). By hand, download the new
+binary the same way, replace the old one and restart. The database, certificate
+and settings are left alone, and the schema migrates itself on start.
 
 ```bash
 sudo install -Dm755 wgui-linux-$ARCH /opt/wgui/wgui
@@ -132,7 +136,54 @@ The only files wgui puts on disk are the database and `admin.conf` on first run.
 service, unlinks it from its boot target and removes the unit; it does not touch
 the database.
 
-If you installed with a version before this one, run `sudo ./wgui --install`
+#### Updating from the panel
+
+Each server checks GitHub for new releases shortly after it starts and every six
+hours after that. When there is one, admins see a banner on every page, and the
+**Updates** section at the top of Settings lists every release newer than the one
+running, each with its changelog, above an **Install** button. *Check now* asks
+straight away.
+
+Installing is careful about the one thing that matters: a panel that updates
+itself into a broken state has also removed the way to fix it from the browser.
+So the update is:
+
+1. downloaded for this server's architecture and checked against the release's
+   published `SHA256SUMS`;
+2. run once with `--version`, which proves it executes on this machine and is
+   the version it was downloaded as;
+3. only then put in place — after the database is backed up to
+   `wgui.db.before-<version>` and the running binary is kept as `wgui.previous`;
+4. restarted into, after the same orderly shutdown a stop gets, so no counted
+   traffic is lost. The process replaces itself, so systemd sees the service
+   carry on, and connected peers stay connected.
+
+The page follows the install, and reloads by itself once the server answers as
+the new version. If anything before the swap fails, nothing has changed and the
+panel says why.
+
+To go back, stop the service and move the two files back — the old binary with
+the database it was using, since a newer version may have migrated it:
+
+```bash
+cd /opt/wgui
+sudo systemctl stop wgui
+sudo mv wgui.previous wgui
+sudo mv wgui.db.before-v2.1.0 wgui.db && sudo rm -f wgui.db-wal wgui.db-shm
+sudo systemctl start wgui
+```
+
+Anything counted between the update and going back is lost with the newer
+database.
+
+Each server updates itself: on a fleet, update the master and each node from its
+own panel. Only Linux release builds update themselves; a build from a working
+tree says so rather than replacing itself with the last release. If a server
+cannot reach GitHub, the Updates section shows the error and the manual upgrade
+above still works. v2.1.0 is the first version with this, so reaching it is
+still a manual upgrade.
+
+If you installed with a version before v2.0.0, run `sudo ./wgui --install`
 once. The unit it wrote had an empty `WantedBy`, so `systemctl enable` had no
 target to link it into and the panel did not start after a reboot.
 
@@ -187,14 +238,19 @@ Versions are `vMAJOR.MINOR.PATCH` and live in git tags; the version, commit and
 build date are linked into the binary and shown by `--version` and in the
 panel's sidebar. Tagging is what publishes a release:
 
+Every version first gets a section in `CHANGELOG.md` headed `## v2.1.0`: that
+section becomes the release notes on GitHub, and is what the panel shows an
+admin before they install the update. Then:
+
 ```bash
 make release TAG=v2.1.0
 ```
 
-That checks the tag looks like a version and the working tree is clean, then
-tags and pushes. Pushing the tag runs `.github/workflows/release.yml`, which
+That checks the tag looks like a version, the working tree is clean and the
+changelog has a section for it, then tags and pushes. Pushing the tag runs `.github/workflows/release.yml`, which
 tests, builds both architectures, and attaches them to a GitHub release along
-with `SHA256SUMS`. Builds from an untagged commit are versioned by
+with `SHA256SUMS`, with the changelog section as its notes followed by install
+instructions. Builds from an untagged commit are versioned by
 `git describe`, so a binary can always be traced back to its source.
 
 ## Configuration

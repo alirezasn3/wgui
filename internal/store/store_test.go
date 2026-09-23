@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -1250,5 +1251,35 @@ func TestResetReachesANodeThatKeptCounting(t *testing.T) {
 	sync()
 	if p, _ := master.GetPeer("a", time.Now().UnixMilli()); p.Usage != 30 {
 		t.Errorf("master usage = %d after the reset, want the 30 counted since", p.Usage)
+	}
+}
+
+// A backup is taken from a database in use, so it has to be a complete,
+// openable copy rather than whatever pages the file held at that moment.
+func TestBackupIsACompleteCopy(t *testing.T) {
+	s := newTestStore(t)
+	mustPeer(t, s, &Peer{ID: "a", Name: "a", AllowedIPs: "10.0.0.2/32"})
+	if err := s.ApplyUsageDeltas([]UsageDelta{{PeerID: "a", TX: 1234}}); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	path := filepath.Join(t.TempDir(), "wgui.db.before-v2.1.0")
+	if err := os.WriteFile(path, []byte("an older backup"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Backup(path); err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+		t.Errorf("backup mode = %v, want 0600: it holds every private key", info.Mode().Perm())
+	}
+
+	copy, err := Open(path)
+	if err != nil {
+		t.Fatalf("open the backup: %v", err)
+	}
+	defer copy.Close()
+	if p, err := copy.GetPeer("a", time.Now().UnixMilli()); err != nil || p.Usage != 1234 {
+		t.Errorf("peer in the backup = %+v (%v), want it with its usage", p, err)
 	}
 }

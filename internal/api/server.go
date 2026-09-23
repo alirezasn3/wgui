@@ -16,6 +16,7 @@ import (
 	"wgui/internal/monitor"
 	"wgui/internal/scripts"
 	"wgui/internal/store"
+	"wgui/internal/update"
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -33,6 +34,7 @@ type Server struct {
 	settings        config.Settings
 	certFingerprint string
 	forwarder       Forwarder
+	updater         *update.Updater
 }
 
 func New(st *store.Store, eng *engine.Engine, runner *scripts.Runner, cfg *config.Config, settings config.Settings, log *slog.Logger) *Server {
@@ -123,6 +125,10 @@ func (s *Server) Handler() *echo.Echo {
 	api.POST("/nodes/secret", s.rotateSyncSecret)
 	api.GET("/status", s.getStatus)
 	api.POST("/traffic/reset", s.resetTraffic)
+	// Each server updates itself: these are never forwarded to a master.
+	api.GET("/update", s.getUpdate)
+	api.POST("/update/check", s.checkUpdate)
+	api.POST("/update/install", s.installUpdate)
 
 	api.GET("/settings", s.getSettings)
 	api.PUT("/settings", s.putSettings)

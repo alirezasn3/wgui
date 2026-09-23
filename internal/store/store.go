@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -113,6 +114,20 @@ func (s *Store) adoptServerID() error {
 func (s *Store) ServerID() string { return s.serverID }
 
 func (s *Store) Close() error { return s.db.Close() }
+
+// Backup writes a consistent copy of the database to path, replacing whatever
+// is there. It is safe against a database in use: VACUUM INTO reads one
+// snapshot, which is what copying the file while wgui runs does not do.
+func (s *Store) Backup(path string) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if _, err := s.db.Exec(`VACUUM INTO ?`, path); err != nil {
+		return err
+	}
+	// The copy holds every peer's private key, like the database itself.
+	return os.Chmod(path, 0o600)
+}
 
 // OpenForRepair opens a database without the integrity gate Open applies and
 // without migrating it, since a damaged database is exactly what --repair is

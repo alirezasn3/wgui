@@ -31,9 +31,11 @@ deps:
 	cd web && npm install
 
 ## web: build the frontend that gets embedded into the binary
+# The build empties web/build, placeholder included; it is put back so a
+# checkout without a built frontend still compiles.
 .PHONY: web
 web:
-	cd web && npm run build
+	cd web && npm run build && touch build/.gitkeep
 
 ## build: build for this machine
 .PHONY: build
@@ -69,6 +71,8 @@ release:
 	@echo "$(TAG)" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$$' \
 		|| { echo "TAG must look like v2.0.0 or v2.0.0-rc1"; exit 1; }
 	@test -z "$$(git status --porcelain)" || { echo "working tree is dirty; commit first"; exit 1; }
+	@grep -q "^## $(TAG)$$" CHANGELOG.md \
+		|| { echo "CHANGELOG.md has no '## $(TAG)' section; it becomes the release notes"; exit 1; }
 	git tag -a $(TAG) -m "$(TAG)"
 	git push origin $(TAG)
 	@echo "pushed $(TAG); the release workflow builds and publishes the binaries"

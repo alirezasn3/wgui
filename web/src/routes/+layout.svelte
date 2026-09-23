@@ -4,6 +4,7 @@
 	import { app } from '$lib/app.svelte';
 	import Icon from '$lib/components/Icon.svelte';
 	import Toasts from '$lib/components/Toasts.svelte';
+	import { updates } from '$lib/updates.svelte';
 	import { onMount } from 'svelte';
 
 	let { children } = $props();
@@ -13,6 +14,17 @@
 	onMount(() => {
 		app.loadTheme();
 		void app.loadSession();
+	});
+
+	// Only admins can install an update, so only they are told about one. The
+	// server does the asking; this only reads what it last learned, so checking
+	// every half hour costs nothing.
+	let isAdmin = $derived(app.session?.isAdmin ?? false);
+	$effect(() => {
+		if (!isAdmin) return;
+		void updates.refresh();
+		const timer = setInterval(() => void updates.refresh(), 30 * 60 * 1000);
+		return () => clearInterval(timer);
 	});
 
 	// A plain user has nothing to administer, so it only gets its own page.
@@ -113,8 +125,19 @@
 					<Icon name={app.theme === 'dark' ? 'sun' : 'moon'} size={14} />
 					{app.theme === 'dark' ? 'Light theme' : 'Dark theme'}
 				</button>
-				<div class="mt-2 px-3 text-[10px]" style="color: var(--text-faint)">
+				<div
+					class="mt-2 flex items-center gap-1.5 px-3 text-[10px]"
+					style="color: var(--text-faint)"
+				>
 					wgui {app.session.version}
+					{#if isAdmin && updates.status?.available}
+						<a
+							href="/settings#updates"
+							class="tag text-[10px] hover:underline"
+							style="background: var(--primary-soft); color: var(--primary)"
+							title="{updates.status.latest} is available">update</a
+						>
+					{/if}
 				</div>
 			</div>
 		</aside>
@@ -155,6 +178,33 @@
 							<span class="font-mono">{app.session.masterUrl}</span>. Changes made here are sent
 							there and come straight back, so the master must be reachable to edit anything.
 						</span>
+					</div>
+				{/if}
+				{#if isAdmin && updates.showBanner && updates.status}
+					<div
+						class="mb-4 flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-xs"
+						style="background: var(--primary-soft); border: 1px solid var(--primary); color: var(--text-muted)"
+					>
+						<span style="color: var(--primary)"><Icon name="download" size={14} /></span>
+						<span class="flex-1">
+							<strong style="color: var(--primary)">wgui {updates.status.latest}</strong>
+							is available — this server runs {updates.status.current}.
+						</span>
+						{#if page.url.pathname !== '/settings'}
+							<a
+								href="/settings#updates"
+								class="font-medium hover:underline"
+								style="color: var(--primary)">See what's new</a
+							>
+						{/if}
+						<button
+							class="btn btn-ghost btn-icon"
+							onclick={() => updates.dismiss()}
+							title="Hide until the next release"
+							aria-label="Dismiss"
+						>
+							<Icon name="close" size={13} />
+						</button>
 					</div>
 				{/if}
 				{@render children()}
