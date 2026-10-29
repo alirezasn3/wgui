@@ -1283,3 +1283,57 @@ func TestBackupIsACompleteCopy(t *testing.T) {
 		t.Errorf("peer in the backup = %+v (%v), want it with its usage", p, err)
 	}
 }
+
+func TestPeersByOwner(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().UnixMilli()
+	mustPeer(t, s, &Peer{ID: "zara", Name: "Zara", Role: "distributor", AllowedIPs: "10.0.0.2/32"})
+	mustPeer(t, s, &Peer{ID: "ali", Name: "ali", Role: "distributor", AllowedIPs: "10.0.0.3/32"})
+	mustPeer(t, s, &Peer{ID: "idle", Name: "idle", Role: "distributor", AllowedIPs: "10.0.0.4/32"})
+	mustPeer(t, s, &Peer{ID: "z1", Name: "z1", OwnerID: "zara", AllowedIPs: "10.0.0.10/32"})
+	mustPeer(t, s, &Peer{ID: "z2", Name: "z2", OwnerID: "zara", AllowedIPs: "10.0.0.11/32"})
+	mustPeer(t, s, &Peer{ID: "a1", Name: "a1", OwnerID: "ali", AllowedIPs: "10.0.0.12/32"})
+	mustPeer(t, s, &Peer{ID: "loose", Name: "loose", AllowedIPs: "10.0.0.13/32"})
+
+	owners, unowned, err := s.Owners()
+	if err != nil {
+		t.Fatalf("owners: %v", err)
+	}
+	// By name, ignoring case; a distributor that owns nothing is not offered.
+	want := []Owner{{"ali", "ali", "distributor", 1}, {"zara", "Zara", "distributor", 2}}
+	if len(owners) != len(want) || owners[0] != want[0] || owners[1] != want[1] {
+		t.Errorf("owners = %+v, want %+v", owners, want)
+	}
+	// The three distributors and the loose peer.
+	if unowned != 4 {
+		t.Errorf("unowned = %d, want 4", unowned)
+	}
+
+	list := func(f PeerFilter) []string {
+		t.Helper()
+		f.Scope, f.Now = adminScope(), now
+		peers, _, err := s.ListPeers(f)
+		if err != nil {
+			t.Fatalf("list: %v", err)
+		}
+		return names(peers)
+	}
+	if got := list(PeerFilter{OwnerID: "zara"}); strings.Join(got, ",") != "z1,z2" {
+		t.Errorf("owned by zara = %v", got)
+	}
+	if got := list(PeerFilter{OwnerID: NoOwner}); strings.Join(got, ",") != "ali,idle,loose,Zara" {
+		t.Errorf("owned by nobody = %v", got)
+	}
+	// Grouped by owner, owners in name order, the unowned after every owner's.
+	if got := list(PeerFilter{Sort: "owner"}); strings.Join(got, ",") != "a1,z1,z2,ali,idle,loose,Zara" {
+		t.Errorf("sorted by owner = %v", got)
+	}
+}
+
+func names(peers []*Peer) []string {
+	out := make([]string, len(peers))
+	for i, p := range peers {
+		out[i] = p.Name
+	}
+	return out
+}

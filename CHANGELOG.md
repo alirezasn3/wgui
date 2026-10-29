@@ -4,6 +4,18 @@ Each version's section becomes its release notes on GitHub, and is what a
 running panel shows an admin before installing the update. Newest first;
 `make release` refuses a tag that has no section here.
 
+## v2.2.0
+
+### Added
+
+- **Peers by owner.** The Peers page has an *Owner* picker next to the status,
+  group and role filters, listing everyone who owns a peer with how many, plus
+  *No owner* for peers nobody is responsible for. Clicking a name in the Owner
+  column picks that owner too, and the choice is kept in the link. Admins only;
+  a distributor's list is already everything it owns.
+- **Sort by owner.** Sorting on the Owner column groups each owner's peers
+  together, owners in name order and unowned peers last.
+
 ## v2.1.0
 
 ### Added

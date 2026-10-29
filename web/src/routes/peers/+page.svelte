@@ -16,7 +16,7 @@
 	import StatusTag from '$lib/components/StatusTag.svelte';
 	import UsageBar from '$lib/components/UsageBar.svelte';
 	import { effectiveLimits, handshake, relative, speed } from '$lib/format';
-	import type { Group, Peer, PeerBulkAction } from '$lib/types';
+	import type { Group, Owner, Peer, PeerBulkAction } from '$lib/types';
 	import { onMount } from 'svelte';
 
 	// -- query state, mirrored into the URL so views can be linked and reloaded
@@ -37,6 +37,8 @@
 	let total = $state(0);
 	let groups = $state<Group[]>([]);
 	let distributors = $state<Peer[]>([]);
+	let owners = $state<Owner[]>([]);
+	let unowned = $state(0);
 	let loadError = $state('');
 	let firstLoad = $state(true);
 
@@ -127,6 +129,21 @@
 		}
 	}
 
+	/**
+	 * Who owns how many changes as peers are created, moved and deleted, so the
+	 * counts are read again whenever the picker is opened rather than polled.
+	 */
+	async function loadOwners() {
+		if (!isAdmin) return;
+		try {
+			const res = await api.owners();
+			owners = res.owners;
+			unowned = res.unowned;
+		} catch {
+			/* the picker keeps what it had */
+		}
+	}
+
 	async function loadSupporting() {
 		if (!canWrite) return;
 		try {
@@ -143,6 +160,7 @@
 
 	onMount(() => {
 		void loadSupporting();
+		void loadOwners();
 
 		// Deep link from the dashboard: ?open=<peer id>
 		const open = page.url.searchParams.get('open');
@@ -370,19 +388,24 @@
 			</select>
 		{/if}
 
-		{#if ownerFilter}
-			<button
-				class="btn btn-default btn-sm"
-				onclick={() => {
-					ownerFilter = '';
-					ownerFilterName = '';
-					applyFilters();
-				}}
-				title="Stop filtering by owner"
+		{#if isAdmin}
+			<select
+				class="field w-auto max-w-[14rem]"
+				bind:value={ownerFilter}
+				onchange={applyFilters}
+				onfocus={loadOwners}
+				aria-label="Owner"
 			>
-				Owner: {ownerFilterName || ownerFilter.slice(0, 8)}
-				<Icon name="close" size={13} />
-			</button>
+				<option value="">Any owner</option>
+				<option value="none">No owner ({unowned})</option>
+				{#each owners as owner (owner.id)}
+					<option value={owner.id}>{owner.name} ({owner.peers})</option>
+				{/each}
+				<!-- A link can name an owner the list has not loaded yet. -->
+				{#if ownerFilter && ownerFilter !== 'none' && !owners.some((o) => o.id === ownerFilter)}
+					<option value={ownerFilter}>{ownerFilterName || 'Selected owner'}</option>
+				{/if}
+			</select>
 		{/if}
 
 		{#if hasFilters}
@@ -471,7 +494,14 @@
 						class="w-[140px] max-xl:hidden"
 					/>
 					{#if isAdmin}
-						<th class="w-[130px] px-3 py-2 font-medium max-lg:hidden">Owner</th>
+						<SortHeader
+							label="Owner"
+							field="owner"
+							{sort}
+							{order}
+							onsort={onSort}
+							class="w-[130px] max-lg:hidden"
+						/>
 					{/if}
 					<th class="w-[124px] px-3 py-2"></th>
 				</tr>

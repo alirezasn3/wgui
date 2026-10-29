@@ -155,6 +155,7 @@ func (s *Server) Handler() *echo.Echo {
 	api.POST("/monitors/:id/check", s.checkMonitor)
 
 	api.GET("/peers", s.listPeers)
+	api.GET("/owners", s.listOwners)
 	api.POST("/peers", s.createPeer, s.forwardToMaster)
 	api.POST("/peers/bulk", s.bulkPeers, s.forwardToMaster)
 	api.GET("/peers/:id", s.getPeer)

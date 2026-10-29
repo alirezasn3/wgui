@@ -67,6 +67,14 @@ export interface Group {
 }
 
 /** Another wgui this one knows about, or this one itself. */
+/** Someone who owns peers, and how many. */
+export interface Owner {
+	id: string;
+	name: string;
+	role: string;
+	peers: number;
+}
+
 export interface Node {
 	id: string;
 	/** 'local' for this server, 'node' for one that syncs to it, 'master' for the one it follows. */

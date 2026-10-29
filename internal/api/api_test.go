@@ -630,3 +630,32 @@ func TestSyncEndpointByMethod(t *testing.T) {
 		}
 	}
 }
+
+func TestOwnersListIsForAdmins(t *testing.T) {
+	f := newFixture(t)
+	f.peer("admin", "adm", "10.0.0.2/32", "admin", nil)
+	f.peer("dist", "dst", "10.0.0.3/32", "distributor", nil)
+	f.peer("customer", "cus", "10.0.0.4/32", "user", func(p *store.Peer) { p.OwnerID = "dst" })
+
+	if rec := f.as("10.0.0.3", http.MethodGet, "/api/owners", ""); rec.Code != http.StatusForbidden {
+		t.Errorf("distributor: got %d, want 403", rec.Code)
+	}
+	rec := f.as("10.0.0.2", http.MethodGet, "/api/owners", "")
+	var out struct {
+		Owners  []store.Owner `json:"owners"`
+		Unowned int           `json:"unowned"`
+	}
+	f.decode(rec, &out)
+	if len(out.Owners) != 1 || out.Owners[0].Name != "dist" || out.Owners[0].Peers != 1 || out.Unowned != 2 {
+		t.Errorf("owners = %+v, unowned %d; want dist owning 1 and 2 unowned", out.Owners, out.Unowned)
+	}
+
+	// The list itself narrows to peers nobody owns.
+	var list struct {
+		Peers []*store.Peer `json:"peers"`
+	}
+	f.decode(f.as("10.0.0.2", http.MethodGet, "/api/peers?owner=none", ""), &list)
+	if got := names(list.Peers); strings.Join(got, ",") != "admin,dist" {
+		t.Errorf("unowned peers = %v, want admin and dist", got)
+	}
+}

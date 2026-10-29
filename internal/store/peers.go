@@ -151,6 +151,47 @@ func (s Scope) where() (string, []any) {
 	}
 }
 
+// NoOwner is the PeerFilter.OwnerID that selects peers nobody owns. A real
+// owner's id is a public key, which can never read like this.
+const NoOwner = "none"
+
+// Owner is a peer that owns others, with how many.
+type Owner struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Role  string `json:"role"`
+	Peers int    `json:"peers"`
+}
+
+// Owners lists everyone who owns at least one peer, by name, and how many peers
+// nobody owns. It is what a list can be narrowed to by owner: a distributor
+// with nothing to show is not worth offering.
+func (s *Store) Owners() ([]Owner, int, error) {
+	rows, err := s.db.Query(`
+	    SELECT o.id, o.name, o.role, COUNT(*) FROM peers p JOIN peers o ON o.id = p.owner_id
+	    GROUP BY o.id ORDER BY o.name COLLATE NOCASE`)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	out := []Owner{}
+	for rows.Next() {
+		var o Owner
+		if err := rows.Scan(&o.ID, &o.Name, &o.Role, &o.Peers); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, o)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	var unowned int
+	err = s.db.QueryRow(`SELECT COUNT(*) FROM peers WHERE owner_id IS NULL`).Scan(&unowned)
+	return out, unowned, err
+}
+
 // PeerFilter describes one page of the peer list.
 type PeerFilter struct {
 	Scope    Scope
@@ -158,7 +199,7 @@ type PeerFilter struct {
 	Status   string // active | disabled | expired | quota | online | offline | never
 	GroupID  *int64 // -1 selects peers with no group
 	Role     string
-	OwnerID  string
+	OwnerID  string // NoOwner selects peers nobody owns
 	Sort     string // name | expiry | usage | remaining | handshake | status | created
 	Desc     bool
 	Page     int // 1-based
@@ -179,7 +220,9 @@ var peerSortColumns = map[string][]string{
 	"status":    {"status"},
 	"created":   {"created_at"},
 	"group":     {"group_name COLLATE NOCASE"},
-	"ip":        {"allowed_ips"},
+	// Peers nobody owns go after every owner's, as unlimited quota does.
+	"owner": {"CASE WHEN owner_name = '' THEN 1 ELSE 0 END", "owner_name COLLATE NOCASE"},
+	"ip":    {"allowed_ips"},
 }
 
 // SortableFields lists the sort keys the API accepts. "speed" is handled above
@@ -239,7 +282,11 @@ func (s *Store) ListPeers(f PeerFilter) ([]*Peer, int, error) {
 		conds = append(conds, `role = ?`)
 		args = append(args, f.Role)
 	}
-	if f.OwnerID != "" {
+	switch f.OwnerID {
+	case "":
+	case NoOwner:
+		conds = append(conds, `owner_id = ''`)
+	default:
 		conds = append(conds, `owner_id = ?`)
 		args = append(args, f.OwnerID)
 	}

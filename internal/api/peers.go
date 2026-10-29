@@ -41,6 +41,20 @@ func (s *Server) localiseSeenOn(peers []*store.Peer) {
 	}
 }
 
+// listOwners is what the peer list can be narrowed to by owner: everyone who
+// owns a peer, with how many, and how many peers nobody owns. Only admins see
+// ownership at all; a distributor's list is already everything it owns.
+func (s *Server) listOwners(c echo.Context) error {
+	if !caller(c).IsAdmin() {
+		return forbidden(c)
+	}
+	owners, unowned, err := s.store.Owners()
+	if err != nil {
+		return s.internalError(c, "listing owners", err)
+	}
+	return c.JSON(http.StatusOK, echo.Map{"owners": owners, "unowned": unowned})
+}
+
 func (s *Server) listPeers(c echo.Context) error {
 	cl := caller(c)
 

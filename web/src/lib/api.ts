@@ -7,6 +7,7 @@ import type {
 	Session,
 	Monitor,
 	Node,
+	Owner,
 	PeerPresence,
 	RuleSet,
 	Script,
@@ -209,6 +210,8 @@ export const api = {
 	group: (id: number) => request<Group>(`/groups/${id}`),
 
 	nodes: () => request<{ nodes: Node[] }>('/nodes'),
+	/** Everyone who owns a peer, and how many peers nobody owns. Admins only. */
+	owners: () => request<{ owners: Owner[]; unowned: number }>('/owners'),
 	peerPresence: (id: string) =>
 		request<{ presence: PeerPresence[] }>(`/peers/${encodeURIComponent(id)}/presence`),
 	forgetNode: (id: string) =>

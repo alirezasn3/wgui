@@ -401,9 +401,14 @@ peer reads as a dash.
 
 A row's group name opens that group, and so does the tag in the peer's own
 dialog. A user that has been granted sight of other peers carries a small badge
-with how many, next to its name. Admins also get an **Owner** column; clicking a
-name there filters the list down to everything that distributor is responsible
-for.
+with how many, next to its name.
+
+Admins can also see peers **by owner**. The *Owner* picker in the filter bar
+lists everyone who owns a peer, with how many, plus *No owner* for peers nobody
+is responsible for; clicking a name in the **Owner** column does the same for that
+owner. Sorting on the Owner column groups each owner's peers together, owners in
+name order and unowned peers last. The choice is kept in the URL, so a link to
+one reseller's customers stays one.
 
 ### If the database is damaged
 
