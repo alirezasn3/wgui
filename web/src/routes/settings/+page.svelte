@@ -5,6 +5,7 @@
 	import LimitInput from '$lib/components/LimitInput.svelte';
 	import QrCode from '$lib/components/QrCode.svelte';
 	import SystemTuning from '$lib/components/SystemTuning.svelte';
+	import TelegramBot from '$lib/components/TelegramBot.svelte';
 	import Updates from '$lib/components/Updates.svelte';
 	import { bytesToGib, gibToBytes } from '$lib/format';
 	import type { Settings } from '$lib/types';
@@ -428,6 +429,8 @@
 				the cost of more writes.
 			</p>
 		</section>
+
+		<TelegramBot bind:telegram={settings.telegram} />
 
 		<SystemTuning />
 

@@ -9,7 +9,7 @@ import (
 )
 
 // schemaVersion is bumped whenever a new migration is appended to migrations.
-const schemaVersion = 8
+const schemaVersion = 9
 
 // migrations[i] upgrades the database from user_version i to i+1.
 var migrations = []string{
@@ -254,6 +254,39 @@ UPDATE nodes SET usage_day = 0, usage_week = 0, usage_month = 0;
 -- A master's request that a node reset its traffic counters, delivered with
 -- the node's next sync. 0 means none has been asked for.
 ALTER TABLE nodes ADD COLUMN traffic_reset_at INTEGER NOT NULL DEFAULT 0;
+`,
+	// v8 -> v9: the Telegram bot. Which chat a peer's warnings go to, the
+	// one-time codes that connect a chat to a peer, and which warnings a peer
+	// has already had. None of it is replicated: the bot runs on the master
+	// only, since two servers polling one bot would take updates from each
+	// other, and a chat id is nobody's business but the server that writes to it.
+	`
+CREATE TABLE telegram_links (
+    peer_id   TEXT    PRIMARY KEY REFERENCES peers(id) ON DELETE CASCADE,
+    chat_id   INTEGER NOT NULL,
+    linked_at INTEGER NOT NULL
+);
+-- One chat may hold several peers: a customer with a phone and a laptop.
+CREATE INDEX idx_telegram_links_chat ON telegram_links(chat_id);
+
+-- Only a hash of the code is kept, and a peer has at most one outstanding.
+CREATE TABLE telegram_codes (
+    code_hash  TEXT    PRIMARY KEY,
+    peer_id    TEXT    NOT NULL REFERENCES peers(id) ON DELETE CASCADE,
+    expires_at INTEGER NOT NULL
+);
+CREATE INDEX idx_telegram_codes_peer ON telegram_codes(peer_id);
+
+-- marker names the situation that was warned about (the expiry date, or the
+-- allowance and the reset it was counted from), so a renewal or a reset arms
+-- the warning again without anything having to clear this table.
+CREATE TABLE telegram_warned (
+    peer_id TEXT    NOT NULL REFERENCES peers(id) ON DELETE CASCADE,
+    kind    TEXT    NOT NULL,
+    marker  TEXT    NOT NULL,
+    sent_at INTEGER NOT NULL,
+    PRIMARY KEY (peer_id, kind)
+);
 `,
 }
 

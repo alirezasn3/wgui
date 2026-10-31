@@ -139,6 +139,48 @@ export interface Settings {
 		apiKeyHeader: string;
 	};
 	usageFlushSeconds: number;
+	telegram: TelegramSettings;
+}
+
+/** Everything the Telegram bot says. Plain text, with {placeholders}. */
+export interface TelegramMessages {
+	linked: string;
+	invalid: string;
+	help: string;
+	expiry: string;
+	usage: string;
+	list: string;
+	listEmpty: string;
+}
+
+export interface TelegramSettings {
+	/** Warn this many days or fewer before expiry. 0 turns it off. */
+	warnDays: number;
+	/** Warn when this much or less of the allowance is left. 0 turns it off. */
+	warnUsageBytes: number;
+	messages: TelegramMessages;
+}
+
+/** What the bot is doing, as the master reports it. */
+export interface TelegramStatus {
+	configured: boolean;
+	username: string;
+	running: boolean;
+	error?: string;
+	/** How many peers are connected to a chat. */
+	linked: number;
+}
+
+/** Whether a peer can be connected to the bot, and whether it is. */
+export interface PeerTelegram {
+	available: boolean;
+	linked: boolean;
+}
+
+/** The link a customer opens to connect their chat to a peer. */
+export interface TelegramLink {
+	link: string;
+	expiresAt: number;
 }
 
 export interface Session {

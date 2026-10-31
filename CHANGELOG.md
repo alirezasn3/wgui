@@ -4,6 +4,50 @@ Each version's section becomes its release notes on GitHub, and is what a
 running panel shows an admin before installing the update. Newest first;
 `make release` refuses a tag that has no section here.
 
+## v2.3.0
+
+### Added
+
+- **Telegram warnings.** A bot, run by wgui itself, that messages a customer
+  before their data or time runs out. Make a bot with @BotFather and paste its
+  token into Settings → Telegram bot; wgui checks it with Telegram before keeping
+  it, and the token is never shown again or copied to nodes. An admin connects a
+  subscription from its page with **Get link**: the customer opens the link in
+  Telegram, once, within seven days.
+- **Two warnings, each sent once per situation.** One when a subscription has
+  this many days left (1 by default), one when it has this much data left (1 GiB
+  by default); 0 turns either off. Renewing, resetting usage or reconnecting a
+  chat arms them again, and a restart does not repeat what was sent. Peers that
+  are already cut off or switched off by hand are not warned, and a group's
+  members are warned about the group's limits.
+- **`/list`.** A customer can ask the bot where each of their subscriptions
+  stands: what they have used, what is left, and when it ends. For a group
+  member, used is their own share and left is what the group has left.
+- **Wording you control.** Everything the bot says — the confirmation, the
+  answer to a bad link, its help, both warnings and both halves of `/list` — is
+  plain text with `{placeholders}`, in whatever language your customers read.
+- Disconnecting is open to whoever may change a peer, and to the customer for
+  their own; a customer who blocks the bot is disconnected automatically.
+
+### Changed
+
+- **Distributors get Peers and Groups only.** The dashboard, and the server pages
+  an admin uses, are no longer offered to them, and typing one of their addresses
+  goes to Peers. Customers still get just their own page.
+- Only admins can make a Telegram link, since it decides whose phone a
+  subscription's warnings reach.
+
+### Upgrading
+
+The database upgrades itself on start. Nothing changes until a bot token is set,
+and the bot runs on the master only, so update the master first; nodes need
+nothing from it and carry Telegram requests to the master on their own. The
+master must be able to reach `api.telegram.org` (`HTTPS_PROXY` is honoured).
+
+If you used the old wgui Telegram bot with the same token, stop it first:
+Telegram lets only one program read a bot's messages. Connections made through
+the old bot are not carried over; each subscription needs a new link.
+
 ## v2.2.0
 
 ### Added

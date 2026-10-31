@@ -19,6 +19,8 @@ var (
 	Repo = "alirezasn3/wgui"
 	// ReleaseAPI is the GitHub API that Repo's releases are read from.
 	ReleaseAPI = "https://api.github.com"
+	// TelegramAPI is the Bot API the warning bot talks to.
+	TelegramAPI = "https://api.telegram.org"
 )
 
 // String is the one-line identity printed by --version.

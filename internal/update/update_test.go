@@ -318,10 +318,14 @@ func TestInstallRefusesWhatItCannotTrust(t *testing.T) {
 				t.Errorf("left behind %v", leftovers)
 			}
 
-			// A failure is not a dead end: the job can be tried again.
+			// A failure is not a dead end: the job can be tried again. The retry
+			// runs in the background like any install, so wait for it: left
+			// running, it is still writing into the directory the test is
+			// about to remove.
 			if err := f.u.Install("v2.1.0"); err != nil {
 				t.Errorf("retry after a failure: %v", err)
 			}
+			f.settle(t)
 		})
 	}
 }

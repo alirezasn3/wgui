@@ -28,7 +28,9 @@ able to reach the panel at all already proves you hold a valid key.
   demand and cached, through any service that answers on a URL, with an optional
   API key.
 - **Roles** — admins see everything, distributors manage the peers they own, and
-  users see only themselves plus whatever has been shared with them.
+  users see only themselves plus whatever has been shared with them. Only admins
+  get the dashboard and the server pages: a distributor works in Peers and
+  Groups, and a user in its own page.
 - **Server tuning and inspection** — IP forwarding and BBR are buttons; the
   dashboard shows the machine's firewall and routing rules.
 - **Automation** — save scripts and run them from the panel, and have a monitor
@@ -38,6 +40,8 @@ able to reach the panel at all already proves you hold a valid key.
   where each peer is connected.
 - **Server traffic** — what each server carried over the last hour, day, week
   and month, with a reset.
+- **Telegram warnings** — a bot that tells a customer, in their own language,
+  before their data or time runs out.
 - **Updates from the panel** — a notice when a new release is out, its
   changelog, and an install that checks the download before swapping it in and
   keeps the previous version to go back to.
@@ -621,6 +625,89 @@ falls back to the unprivileged datagram socket, which needs
 `net.ipv4.ping_group_range` to include its group. Prefer a `host:port` target
 where you can: plenty of hosts drop ping, and a monitor cannot tell that apart
 from an outage.
+
+### Telegram warnings
+
+A bot can message a customer shortly before their subscription runs out of data
+or time, so it never comes as a surprise. It runs inside wgui: there is nothing
+else to host.
+
+**Setting it up.** Make a bot with `@BotFather` in Telegram, then paste its token
+into **Settings → Telegram bot**. wgui asks Telegram whether the token is real
+before it keeps it, and says who the bot is. The token is stored with the other
+secrets in the database, never returned by the API, not copied to nodes, and kept
+out of every log line and error message.
+
+**Connecting a customer.** An admin opens a peer, and under *Telegram warnings*
+presses **Get link**. The link looks like `https://t.me/yourbot?start=…`: send it
+to the customer, and when they open it in Telegram the subscription is connected,
+with a confirmation message. A link works once and for seven days; making another
+cancels the first, which is how a link sent to the wrong person is taken back.
+
+**Only admins make links.** A link decides whose phone a subscription's warnings
+reach, so it stays with the person who hands them out. A distributor, or a
+customer looking at their own peer, can see whether it is connected, and can
+*Disconnect* it — stopping messages is not something to withhold — but cannot
+start one. One chat can hold several subscriptions, such as a phone and a laptop.
+A customer who blocks the bot is disconnected automatically, and connecting again
+starts afresh.
+
+**Asking the bot.** A customer can send the bot `/list` to see where each of the
+subscriptions connected to that chat stands: what they have used, what is left, and
+when it ends. For a member of a group, *used* is their own share and *left* is what
+the group has left, since that is what will cut them off — the same split the panel
+shows. It only ever answers a private chat, and only about that chat's own
+subscriptions.
+
+**What is warned, and when.** Two warnings, each with its own threshold in
+Settings, and each switched off by setting it to 0:
+
+- **Expiry** — when the subscription has this many days or fewer left. The default
+  is 1.
+- **Low data** — when this much or less of the allowance is left. The default is
+  1 GiB.
+
+Each is sent **once per situation**. An expiry warning is about one expiry date,
+and a low-data warning about one allowance counted from one reset, so renewing a
+subscription or resetting its usage arms the warning again with nothing having to
+notice; a restart of wgui does not repeat what has been sent. A peer that is
+already cut off, or switched off by hand, is not warned. A group's members are
+warned about **the group's** limits — they are the ones that apply — so a member
+that has used nothing itself still hears that the group is nearly spent. A
+subscription whose whole allowance is smaller than the threshold is warned as soon
+as it is connected; lower the threshold if that is not what you want.
+
+**What it says.** Everything the bot says is text you can change, because your
+customers are the ones reading it. Under *What the bot says* are seven messages:
+the confirmation, the answer to a link that does not work, the answer to anything
+else sent to the bot, the two warnings, and the two halves of `/list` — what it
+says about each subscription, and what it says when there are none. They are plain
+text with `{placeholders}`: `{name}` is the subscription, and the warnings also
+have `{remaining}`, `{expires}`, `{days}` and `{hours}`. The `/list` message is
+filled in once for each subscription and also has `{group}`, `{used}` and
+`{allowed}`; where a subscription has no limit those read `∞`, which needs no
+translating. A link such as
+`https://t.me/youradmin` becomes tappable, so a warning is the place to say who to
+ask for a renewal. A message left empty gets its default back.
+
+```
+حجم اشتراک {name} کمتر از {remaining} است. برای تمدید پیام دهید: https://t.me/youradmin
+```
+
+**Where it runs.** On the master only. Two servers reading one bot's messages take
+them from each other, and every warning would go out twice. On a node, Settings
+and every peer's page work as usual and carry what they need to the master, which
+must therefore be reachable.
+
+**Reaching Telegram.** The master has to reach `api.telegram.org`. Behind a
+proxy, set `HTTPS_PROXY` for the service with `sudo systemctl edit wgui`
+(`Environment=HTTPS_PROXY=http://host:port`) and restart it. If it cannot connect,
+the card in Settings says so, and why.
+
+**One reader per bot.** Telegram lets only one program read a bot's messages. If
+another program already does — an earlier bot using the same token, say — wgui
+reports the conflict instead of fighting it; stop the other one, or give wgui a
+bot of its own. A bot with a webhook set shows the same error.
 
 ### Network rules on the dashboard
 

@@ -17,6 +17,7 @@
 	import Modal from './Modal.svelte';
 	import QrCode from './QrCode.svelte';
 	import StatusTag from './StatusTag.svelte';
+	import TelegramLink from './TelegramLink.svelte';
 	import UsageBar from './UsageBar.svelte';
 	import VisibilityEditor from './VisibilityEditor.svelte';
 
@@ -389,6 +390,12 @@
 						<div class="label">Note</div>
 						<p class="text-sm whitespace-pre-wrap" style="color: var(--text-muted)">{peer.note}</p>
 					</div>
+				{/if}
+
+				<!-- Whoever may change the peer, and the peer itself: a customer
+				     connecting their own subscription is the point of it. -->
+				{#if canModify || peer.id === app.session?.peerId}
+					<TelegramLink peerId={peer.id} />
 				{/if}
 
 				{#if canModify && peer.role === 'user'}

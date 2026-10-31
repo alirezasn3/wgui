@@ -25,6 +25,7 @@ import (
 	"wgui/internal/scripts"
 	"wgui/internal/store"
 	"wgui/internal/system"
+	"wgui/internal/telegram"
 	"wgui/internal/update"
 	"wgui/internal/version"
 	"wgui/internal/wgdev"
@@ -247,6 +248,20 @@ func run(opt options) error {
 	})
 	srv.SetUpdater(updater)
 	go updater.Run(ctx)
+
+	// The warning bot belongs to the master. Two servers reading one bot's
+	// messages take them from each other, and every warning would go out twice;
+	// a node's panel carries what it needs to the master instead.
+	if !cfg.Master.IsNode() {
+		bot := telegram.New(telegram.Options{
+			Store:    st,
+			Log:      log,
+			Settings: srv.Settings,
+			API:      version.TelegramAPI,
+		})
+		srv.SetTelegram(bot)
+		go bot.Run(ctx)
+	}
 
 	// A server with a master is a node: it serves that master's peers and
 	// reports what it has counted, rather than being edited in its own right.

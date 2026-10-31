@@ -44,17 +44,65 @@ type IPInfoSettings struct {
 	APIKeyHeader string `json:"apiKeyHeader"`
 }
 
+// TelegramMessages are everything the bot ever says. They are settings rather
+// than strings in the code because the people reading them are the operator's
+// customers, who rarely share the operator's language, and because a warning
+// usually wants a line the operator alone can write — who to ask for a renewal.
+//
+// Messages are plain text. Telegram turns a bare link into a tappable one, and
+// plain text cannot fail to parse: a stray angle bracket in an HTML message
+// would make Telegram refuse every warning, not just that one.
+//
+// Placeholders are written in braces: {name} everywhere a peer is involved, and
+// {remaining}, {days}, {hours} and {expires} in the two warnings. The /list
+// message is filled in once for each subscription and also has {group},
+// {used} and {allowed}; where a subscription has no limit it reads ∞, which
+// needs no translating.
+type TelegramMessages struct {
+	// Linked answers a customer who has just connected a subscription.
+	Linked string `json:"linked"`
+	// Invalid answers a link that has expired, been used, or never existed.
+	Invalid string `json:"invalid"`
+	// Help answers everything else a customer might send the bot.
+	Help string `json:"help"`
+	// ExpiryWarning is sent once, as a subscription's end approaches.
+	ExpiryWarning string `json:"expiry"`
+	// UsageWarning is sent once, as a subscription's data runs low.
+	UsageWarning string `json:"usage"`
+	// List is what /list says about each subscription connected to the chat.
+	List string `json:"list"`
+	// ListEmpty is what /list says when there are none.
+	ListEmpty string `json:"listEmpty"`
+}
+
+// TelegramSettings configure the warning bot. Its token is a secret and is
+// kept out of here: settings are returned by the API and copied to every node.
+type TelegramSettings struct {
+	// WarnDays warns a peer when this many days or fewer are left before it
+	// expires. 0 turns the warning off.
+	WarnDays int `json:"warnDays"`
+	// WarnUsageBytes warns a peer when this much or less of its allowance is
+	// left. 0 turns the warning off.
+	WarnUsageBytes int64            `json:"warnUsageBytes"`
+	Messages       TelegramMessages `json:"messages"`
+}
+
+// maxMessageRunes keeps a message well inside Telegram's 4096-character limit
+// once its placeholders have been filled in.
+const maxMessageRunes = 1000
+
 // Settings is the runtime-editable configuration, persisted in the settings
 // table and changeable from the UI without a restart.
 type Settings struct {
-	PublicAddress     string         `json:"publicAddress"`
-	Endpoints         []string       `json:"endpoints"`
-	DefaultEndpoint   string         `json:"defaultEndpoint"`
-	PeerDefaults      PeerDefaults   `json:"peerDefaults"`
-	GroupDefaults     GroupDefaults  `json:"groupDefaults"`
-	QR                QRSettings     `json:"qr"`
-	IPInfo            IPInfoSettings `json:"ipinfo"`
-	UsageFlushSeconds int            `json:"usageFlushSeconds"`
+	PublicAddress     string           `json:"publicAddress"`
+	Endpoints         []string         `json:"endpoints"`
+	DefaultEndpoint   string           `json:"defaultEndpoint"`
+	PeerDefaults      PeerDefaults     `json:"peerDefaults"`
+	GroupDefaults     GroupDefaults    `json:"groupDefaults"`
+	QR                QRSettings       `json:"qr"`
+	IPInfo            IPInfoSettings   `json:"ipinfo"`
+	UsageFlushSeconds int              `json:"usageFlushSeconds"`
+	Telegram          TelegramSettings `json:"telegram"`
 }
 
 // DefaultSettings are written to the database on first run.
@@ -85,6 +133,19 @@ func DefaultSettings() Settings {
 			APIKeyHeader:  "Authorization",
 		},
 		UsageFlushSeconds: 10,
+		Telegram: TelegramSettings{
+			WarnDays:       1,
+			WarnUsageBytes: 1 << 30,
+			Messages: TelegramMessages{
+				Linked:        "{name} is connected. You will get a message here before its data or time runs out.",
+				Invalid:       "That link is not valid any more. Ask for a new one.",
+				Help:          "I warn you before your data or time runs out. Send /list to see where your subscriptions stand. To connect a subscription, open the link you were given for it.",
+				ExpiryWarning: "{name} expires on {expires}. Renew it before then to stay connected.",
+				UsageWarning:  "{name} has only {remaining} of data left. Top it up to stay connected.",
+				List:          "{name}\nData: {used} used of {allowed}, {remaining} left\nExpires: {expires}",
+				ListEmpty:     "No subscription is connected to this chat. Open the link you were given for one to connect it.",
+			},
+		},
 	}
 }
 
@@ -158,6 +219,35 @@ func (s *Settings) Normalize() {
 	}
 	if s.UsageFlushSeconds > 300 {
 		s.UsageFlushSeconds = 300
+	}
+
+	s.Telegram.Normalize()
+}
+
+// Normalize repairs the bot's settings. A message left empty gets its default
+// back, so clearing a box and saving never leaves the bot with nothing to say.
+func (t *TelegramSettings) Normalize() {
+	t.WarnDays = max(0, min(t.WarnDays, 365))
+	t.WarnUsageBytes = max(0, t.WarnUsageBytes)
+
+	def := DefaultSettings().Telegram.Messages
+	for _, m := range []struct{ got, fallback *string }{
+		{&t.Messages.Linked, &def.Linked},
+		{&t.Messages.Invalid, &def.Invalid},
+		{&t.Messages.Help, &def.Help},
+		{&t.Messages.ExpiryWarning, &def.ExpiryWarning},
+		{&t.Messages.UsageWarning, &def.UsageWarning},
+		{&t.Messages.List, &def.List},
+		{&t.Messages.ListEmpty, &def.ListEmpty},
+	} {
+		text := strings.TrimSpace(*m.got)
+		if r := []rune(text); len(r) > maxMessageRunes {
+			text = string(r[:maxMessageRunes])
+		}
+		if text == "" {
+			text = *m.fallback
+		}
+		*m.got = text
 	}
 }
 

@@ -35,6 +35,7 @@ type Server struct {
 	certFingerprint string
 	forwarder       Forwarder
 	updater         *update.Updater
+	telegram        TelegramBot
 }
 
 func New(st *store.Store, eng *engine.Engine, runner *scripts.Runner, cfg *config.Config, settings config.Settings, log *slog.Logger) *Server {
@@ -156,6 +157,14 @@ func (s *Server) Handler() *echo.Echo {
 
 	api.GET("/peers", s.listPeers)
 	api.GET("/owners", s.listOwners)
+
+	// The Telegram bot runs on the master alone, so a node carries all of this
+	// there: the master is where the token, the links and the chats are.
+	api.GET("/telegram", s.getTelegram, s.forwardToMaster)
+	api.PUT("/telegram/token", s.putTelegramToken, s.forwardToMaster)
+	api.GET("/peers/:id/telegram", s.getPeerTelegram, s.forwardToMaster)
+	api.POST("/peers/:id/telegram", s.linkPeerTelegram, s.forwardToMaster)
+	api.DELETE("/peers/:id/telegram", s.unlinkPeerTelegram, s.forwardToMaster)
 	api.POST("/peers", s.createPeer, s.forwardToMaster)
 	api.POST("/peers/bulk", s.bulkPeers, s.forwardToMaster)
 	api.GET("/peers/:id", s.getPeer)

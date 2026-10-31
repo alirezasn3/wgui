@@ -51,8 +51,10 @@ func (s *Server) forwardToMaster(next echo.HandlerFunc) echo.HandlerFunc {
 
 		// Pull the change back down before answering, so an operator who
 		// refreshes immediately sees what they just did rather than the state
-		// from before it.
-		s.forwarder.SyncNow(c.Request().Context())
+		// from before it. A read changed nothing, so there is nothing to pull.
+		if c.Request().Method != http.MethodGet && c.Request().Method != http.MethodHead {
+			s.forwarder.SyncNow(c.Request().Context())
+		}
 
 		for k, vs := range res.Headers {
 			for _, v := range vs {

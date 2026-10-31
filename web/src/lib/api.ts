@@ -12,8 +12,11 @@ import type {
 	RuleSet,
 	Script,
 	ScriptRun,
+	PeerTelegram,
 	Settings,
 	SystemStatus,
+	TelegramLink,
+	TelegramStatus,
 	UpdateStatus
 } from './types';
 
@@ -140,6 +143,18 @@ export const api = {
 	status: () => request<ServerStatus>('/status'),
 
 	system: () => request<SystemStatus>('/system'),
+	telegramStatus: () => request<TelegramStatus>('/telegram'),
+	/** Sets the bot's token, or removes the bot with an empty one. Write-only. */
+	setTelegramToken: (token: string) =>
+		request<TelegramStatus>('/telegram/token', {
+			method: 'PUT',
+			body: JSON.stringify({ token })
+		}),
+	peerTelegram: (id: string) => request<PeerTelegram>(`/peers/${encodeURIComponent(id)}/telegram`),
+	linkPeerTelegram: (id: string) =>
+		request<TelegramLink>(`/peers/${encodeURIComponent(id)}/telegram`, { method: 'POST' }),
+	unlinkPeerTelegram: (id: string) =>
+		request<void>(`/peers/${encodeURIComponent(id)}/telegram`, { method: 'DELETE' }),
 	updateStatus: () => request<UpdateStatus>('/update'),
 	checkForUpdate: () => request<UpdateStatus>('/update/check', { method: 'POST' }),
 	installUpdate: (version: string) =>

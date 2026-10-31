@@ -240,6 +240,7 @@ func settingsFields(s *config.Settings) map[string]any {
 		"qr":                &s.QR,
 		"ipinfo":            &s.IPInfo,
 		"usageFlushSeconds": &s.UsageFlushSeconds,
+		"telegram":          &s.Telegram,
 	}
 }
 
