@@ -48,9 +48,9 @@
 	}
 
 	onMount(() => {
-		// A plain user has no dashboard to look at; send it straight to its own
-		// connection details.
-		if (!app.session?.canWrite) {
+		// The dashboard is the admin's. Anyone else is sent to the peers page
+		// before it has asked the server for anything.
+		if (!app.session?.isAdmin) {
 			void goto('/peers');
 			return;
 		}

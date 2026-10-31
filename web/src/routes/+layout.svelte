@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '../app.css';
+	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { app } from '$lib/app.svelte';
 	import Icon from '$lib/components/Icon.svelte';
@@ -27,25 +28,39 @@
 		return () => clearInterval(timer);
 	});
 
-	// A plain user has nothing to administer, so it only gets its own page.
+	// What each kind of peer gets. The dashboard is about the server — its
+	// traffic, its fleet, its firewall — which is an admin's concern: a
+	// distributor manages its own customers, so it gets peers and groups, and a
+	// plain user only its own page.
 	let links = $derived(
-		app.session?.canWrite
+		isAdmin
 			? [
 					{ href: '/', label: 'Dashboard', icon: 'dashboard' as const },
 					{ href: '/peers', label: 'Peers', icon: 'peers' as const },
 					{ href: '/groups', label: 'Groups', icon: 'groups' as const },
-					...(app.session?.isAdmin
-						? [
-								{ href: '/automation', label: 'Automation', icon: 'power' as const },
-								{ href: '/nodes', label: 'Nodes', icon: 'globe' as const },
-								{ href: '/settings', label: 'Settings', icon: 'settings' as const }
-							]
-						: [])
+					{ href: '/automation', label: 'Automation', icon: 'power' as const },
+					{ href: '/nodes', label: 'Nodes', icon: 'globe' as const },
+					{ href: '/settings', label: 'Settings', icon: 'settings' as const }
 				]
-			: [{ href: '/peers', label: 'My connection', icon: 'peers' as const }]
+			: app.session?.canWrite
+				? [
+						{ href: '/peers', label: 'Peers', icon: 'peers' as const },
+						{ href: '/groups', label: 'Groups', icon: 'groups' as const }
+					]
+				: [{ href: '/peers', label: 'My connection', icon: 'peers' as const }]
 	);
 
 	let current = $derived(page.url.pathname.replace(/\/$/, '') || '/');
+
+	// Not hiding a link is not the same as not being able to type its address, so
+	// a page a peer has no use for sends it to the first one it does. The API
+	// refuses these requests regardless; this only spares the person an error
+	// page where a screen should be.
+	$effect(() => {
+		if (!app.session || isAdmin) return;
+		const allowed = links.some((l) => current === l.href || current.startsWith(l.href + '/'));
+		if (!allowed) void goto(links[0].href, { replaceState: true });
+	});
 
 	function isActive(href: string) {
 		return href === '/' ? current === '/' : current.startsWith(href);
