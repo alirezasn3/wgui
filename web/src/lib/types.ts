@@ -151,6 +151,7 @@ export interface TelegramMessages {
 	usage: string;
 	list: string;
 	listEmpty: string;
+	listMember: string;
 }
 
 export interface TelegramSettings {

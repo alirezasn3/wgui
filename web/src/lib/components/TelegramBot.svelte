@@ -99,8 +99,13 @@
 		{
 			key: 'list',
 			label: 'What /list says about each subscription',
-			hint: '{name}, {group}, {used}, {allowed}, {remaining}, {expires} and {days}. Used is the customer’s own; left is what will cut them off, the group’s for a group member. ∞ where there is no limit.',
+			hint: '{name}, {group}, {used}, {allowed}, {remaining}, {expires} and {days}. For a member of a group these are the whole group’s figures, and members on the same chat are listed together, so {name} can be several names. ∞ where there is no limit.',
 			rows: 4
+		},
+		{
+			key: 'listMember',
+			label: 'What /list says about each member of a group',
+			hint: 'One line under the group’s figures for every member of the group, including those on other chats. {name}, {used} (that member’s own) and {group}. The lines add up to the group’s total.'
 		},
 		{
 			key: 'listEmpty',

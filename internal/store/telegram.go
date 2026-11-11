@@ -192,11 +192,18 @@ type Standing struct {
 	// to another group reads as a new situation rather than the old one going on.
 	ResetAt int64
 	GroupID int64
-	// GroupName and OwnUsed are for telling a customer where they stand. A
-	// member's Used is the whole group's, which is what cuts it off; what the
-	// customer asks about is how much of it is theirs.
+	// GroupName is for telling a customer which group they are in, "" if none.
 	GroupName string
-	OwnUsed   int64
+	// Members is everyone in the peer's group, by name, with what each has used.
+	// Only ChatStandings fills it, and only for a peer that is in a group.
+	Members []GroupMember
+}
+
+// GroupMember is one peer of a group and how much of the group's allowance it
+// has used itself. A group's members' figures add up to the group's.
+type GroupMember struct {
+	Name string
+	Used int64
 }
 
 // Standings returns every peer that is connected to a chat.
@@ -204,16 +211,60 @@ func (s *Store) Standings(now int64) ([]Standing, error) {
 	return s.standings(now, "")
 }
 
-// ChatStandings returns the peers connected to one chat.
+// ChatStandings returns the peers connected to one chat. A peer in a group comes
+// with all of the group's members, including those connected to other chats or to
+// none: the group is one pot, and a member asking where it went is owed the whole
+// answer.
 func (s *Store) ChatStandings(now, chatID int64) ([]Standing, error) {
-	return s.standings(now, "WHERE l.chat_id = ?", chatID)
+	out, err := s.standings(now, "WHERE l.chat_id = ?", chatID)
+	if err != nil {
+		return nil, err
+	}
+
+	var ids []any
+	seen := map[int64]bool{}
+	for _, st := range out {
+		if st.GroupID != 0 && !seen[st.GroupID] {
+			seen[st.GroupID] = true
+			ids = append(ids, st.GroupID)
+		}
+	}
+	if len(ids) == 0 {
+		return out, nil
+	}
+
+	rows, err := s.db.Query(peerCTE+`
+	    SELECT group_id, name, usage FROM v
+	    WHERE group_id IN (`+placeholders(len(ids))+`)
+	    ORDER BY name COLLATE NOCASE`, append([]any{now, now}, ids...)...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	members := map[int64][]GroupMember{}
+	for rows.Next() {
+		var gid int64
+		var m GroupMember
+		if err := rows.Scan(&gid, &m.Name, &m.Used); err != nil {
+			return nil, err
+		}
+		members[gid] = append(members[gid], m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		out[i].Members = members[out[i].GroupID]
+	}
+	return out, nil
 }
 
 func (s *Store) standings(now int64, where string, args ...any) ([]Standing, error) {
 	rows, err := s.db.Query(peerCTE+`
 	    SELECT v.id, v.name, l.chat_id, v.status,
 	           v.eff_allowed_usage, v.eff_usage, v.eff_expires_at, v.usage_reset_at, v.group_id,
-	           v.group_name, v.usage
+	           v.group_name
 	    FROM v JOIN telegram_links l ON l.peer_id = v.id `+where+`
 	    ORDER BY l.chat_id, v.name COLLATE NOCASE`, append([]any{now, now}, args...)...)
 	if err != nil {
@@ -226,7 +277,7 @@ func (s *Store) standings(now int64, where string, args ...any) ([]Standing, err
 		var st Standing
 		if err := rows.Scan(&st.PeerID, &st.Name, &st.ChatID, &st.Status,
 			&st.Allowed, &st.Used, &st.ExpiresAt, &st.ResetAt, &st.GroupID,
-			&st.GroupName, &st.OwnUsed); err != nil {
+			&st.GroupName); err != nil {
 			return nil, err
 		}
 		out = append(out, st)

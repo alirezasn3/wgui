@@ -654,10 +654,17 @@ starts afresh.
 
 **Asking the bot.** A customer can send the bot `/list` to see where each of the
 subscriptions connected to that chat stands: what they have used, what is left, and
-when it ends. For a member of a group, *used* is their own share and *left* is what
-the group has left, since that is what will cut them off — the same split the panel
-shows. It only ever answers a private chat, and only about that chat's own
-subscriptions.
+when it ends. A group is one pot, so for a member of a group these are **the whole
+group's** figures — what the group has spent in all, what it has left, and when it
+ends — not only what that one phone has used. Under them goes a line for **every
+member of the group**, with what each has used, so a customer can see where the
+group's allowance went; the lines add up to the group's total. That includes
+members connected to other chats, or to none, so a member sees the names and use of
+everyone they share a group with. A group of one has nobody else to list. Members
+of the same group that are connected to the same chat are listed once, with their
+names together, rather than the same numbers once each. It only ever answers a
+private chat, and only about the groups and subscriptions of that chat's own
+connected peers.
 
 **What is warned, and when.** Two warnings, each with its own threshold in
 Settings, and each switched off by setting it to 0:
@@ -678,15 +685,19 @@ subscription whose whole allowance is smaller than the threshold is warned as so
 as it is connected; lower the threshold if that is not what you want.
 
 **What it says.** Everything the bot says is text you can change, because your
-customers are the ones reading it. Under *What the bot says* are seven messages:
+customers are the ones reading it. Under *What the bot says* are eight messages:
 the confirmation, the answer to a link that does not work, the answer to anything
-else sent to the bot, the two warnings, and the two halves of `/list` — what it
-says about each subscription, and what it says when there are none. They are plain
+else sent to the bot, the two warnings, and three for `/list` — what it says about
+each subscription, the line under a group for each of its members, and what it says
+when there are none. They are plain
 text with `{placeholders}`: `{name}` is the subscription, and the warnings also
 have `{remaining}`, `{expires}`, `{days}` and `{hours}`. The `/list` message is
-filled in once for each subscription and also has `{group}`, `{used}` and
-`{allowed}`; where a subscription has no limit those read `∞`, which needs no
-translating. A link such as
+filled in once for each subscription — or once for a group, when several of its
+members are connected to the chat, in which case `{name}` is their names joined by
+commas — and also has `{group}`, `{used}` and `{allowed}`. For a group member these
+are the group's figures. Where there is no limit they read `∞`, which needs no
+translating. The member line has `{name}` and `{used}`, both that member's own, and
+`{group}`. A link such as
 `https://t.me/youradmin` becomes tappable, so a warning is the place to say who to
 ask for a renewal. A message left empty gets its default back.
 

@@ -13,9 +13,13 @@ func TestTelegramSettingsAreRepairedNotRejected(t *testing.T) {
 	s.Telegram.Messages.Linked = "   "
 	s.Telegram.Messages.ExpiryWarning = ""
 	s.Telegram.Messages.UsageWarning = "  trimmed {name}  "
+	s.Telegram.Messages.ListMember = " "
 	s.Normalize()
 	if s.Telegram.Messages.Linked != def.Messages.Linked || s.Telegram.Messages.ExpiryWarning != def.Messages.ExpiryWarning {
 		t.Errorf("empty messages = %q / %q, want the defaults back", s.Telegram.Messages.Linked, s.Telegram.Messages.ExpiryWarning)
+	}
+	if s.Telegram.Messages.ListMember != def.Messages.ListMember || def.Messages.ListMember == "" {
+		t.Errorf("empty member line = %q, want the default %q", s.Telegram.Messages.ListMember, def.Messages.ListMember)
 	}
 	if s.Telegram.Messages.UsageWarning != "trimmed {name}" {
 		t.Errorf("message = %q, want it trimmed", s.Telegram.Messages.UsageWarning)

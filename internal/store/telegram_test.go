@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"wgui/internal/config"
 )
 
 func mustMarshal(t *testing.T, v any) string {
@@ -304,5 +306,74 @@ func TestConnectingAChatStartsFreshForWarnings(t *testing.T) {
 	// Nobody else's history is touched.
 	if _, kept := warned[WarnedKey{"b", WarnUsage}]; !kept {
 		t.Error("connecting one peer erased another's warnings")
+	}
+}
+
+// Settings saved by an earlier version have no member line, and must get the
+// default rather than an empty one: a missing key leaves the default alone.
+func TestSettingsSavedBeforeTheMemberLineExistedGetItsDefault(t *testing.T) {
+	s := newTestStore(t)
+	old := `{"warnDays":3,"warnUsageBytes":0,"messages":{"linked":"hello {name}","list":"{name} only"}}`
+	if _, err := s.DB().Exec(`INSERT INTO settings (key, value) VALUES ('telegram', ?)`, old); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.LoadSettings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := got.Telegram.Messages
+	if m.Linked != "hello {name}" || m.List != "{name} only" || got.Telegram.WarnDays != 3 {
+		t.Errorf("what was saved changed: %+v", got.Telegram)
+	}
+	if def := config.DefaultSettings().Telegram.Messages.ListMember; m.ListMember == "" || m.ListMember != def {
+		t.Errorf("member line = %q, want the default %q", m.ListMember, def)
+	}
+}
+
+func TestChatStandingsNameEveryMemberOfAGroup(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().UnixMilli()
+	g := &Group{Name: "family", AllowedUsage: 1000}
+	h := &Group{Name: "other", AllowedUsage: 1000}
+	for _, grp := range []*Group{g, h} {
+		if err := s.CreateGroup(grp); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustPeer(t, s, &Peer{ID: "a", Name: "b-second", AllowedIPs: "10.0.0.2/32", GroupID: g.ID})
+	mustPeer(t, s, &Peer{ID: "b", Name: "A-first", AllowedIPs: "10.0.0.3/32", GroupID: g.ID})
+	mustPeer(t, s, &Peer{ID: "c", Name: "elsewhere", AllowedIPs: "10.0.0.4/32", GroupID: h.ID})
+	mustPeer(t, s, &Peer{ID: "d", Name: "loner", AllowedIPs: "10.0.0.5/32"})
+	for _, id := range []string{"a", "d"} {
+		code, _, _ := s.CreateLinkCode(id)
+		if _, err := s.RedeemLinkCode(code, 7); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.ApplyUsageDeltas([]UsageDelta{{PeerID: "a", TX: 100}, {PeerID: "b", TX: 250, RX: 50}, {PeerID: "c", TX: 999}}); err != nil {
+		t.Fatal(err)
+	}
+
+	list, err := s.ChatStandings(now, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]Standing{}
+	for _, st := range list {
+		byName[st.Name] = st
+	}
+	family := byName["b-second"]
+	// Everyone in the group, whether or not they are on this chat, by name
+	// regardless of case, each with their own use — which adds up to the group's.
+	want := []GroupMember{{"A-first", 300}, {"b-second", 100}}
+	if len(family.Members) != 2 || family.Members[0] != want[0] || family.Members[1] != want[1] {
+		t.Errorf("members = %+v, want %+v", family.Members, want)
+	}
+	if family.Used != 400 || want[0].Used+want[1].Used != family.Used {
+		t.Errorf("group used %d, members add up to %d", family.Used, want[0].Used+want[1].Used)
+	}
+	// A peer outside any group has no members, and another group's are not mixed in.
+	if loner := byName["loner"]; len(loner.Members) != 0 {
+		t.Errorf("a peer in no group has members: %+v", loner.Members)
 	}
 }

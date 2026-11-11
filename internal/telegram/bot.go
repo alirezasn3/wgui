@@ -317,9 +317,16 @@ const maxChunk = 3500
 
 // list tells a customer where each subscription connected to their chat stands.
 //
-// What it calls "used" is the customer's own use, and "left" is what will cut
-// them off: for a group member those are different numbers, the member's share
-// and the group's remainder, and the panel shows the same split.
+// A group is one pot: its members share an allowance and an expiry, and it is
+// the group running out that cuts each of them off. So a member is told how the
+// group stands — what it has spent in all, what it has left, when it ends — and,
+// under that, what each member of the group has used, which is where the spending
+// went. That includes members on other chats, or on none: the figures add up to
+// the group's, and a list that left some out would not.
+//
+// Members of one group that are connected to the same chat share every figure, so
+// they are told once, with their names together, instead of the same numbers over
+// again.
 func (b *Bot) list(ctx context.Context, c *client, chatID int64) {
 	msgs := b.opt.Settings().Telegram.Messages
 	now := time.Now().UnixMilli()
@@ -334,26 +341,96 @@ func (b *Bot) list(ctx context.Context, c *client, chatID int64) {
 		return
 	}
 
-	// Cut between subscriptions, never through one, so a customer with many is
-	// not sent half a block.
-	var chunk []string
-	size := 0
-	flush := func() {
-		if len(chunk) > 0 {
-			b.reply(ctx, c, chatID, strings.Join(chunk, "\n\n"))
-			chunk, size = nil, 0
+	type entry struct {
+		names []string
+		st    store.Standing
+	}
+	var entries []*entry
+	byGroup := map[int64]*entry{}
+	for _, st := range standings {
+		if e, ok := byGroup[st.GroupID]; ok && st.GroupID != 0 {
+			e.names = append(e.names, st.Name)
+			continue
+		}
+		e := &entry{names: []string{st.Name}, st: st}
+		entries = append(entries, e)
+		if st.GroupID != 0 {
+			byGroup[st.GroupID] = e
 		}
 	}
-	for _, st := range standings {
-		item := render(msgs.List, listValues(st, now))
-		n := len([]rune(item)) + 2 // and the blank line that separates it
-		if size+n > maxChunk && len(chunk) > 0 {
+
+	// A message is built from pieces, each with what separates it from the one
+	// before: a blank line between subscriptions, a line break between a group's
+	// members. It may be cut between any two, so a customer with many is never
+	// sent half of one — and a group with more members than fit is carried over
+	// into the next message a member at a time. A group's own line is joined to
+	// its first member, so it is never left alone at the end of a message.
+	type piece struct{ text, sep string }
+	var pieces []piece
+	for _, e := range entries {
+		values := listValues(e.st, now)
+		values["name"] = strings.Join(e.names, ", ")
+		head := render(msgs.List, values)
+
+		lines := memberLines(e.st, msgs.ListMember)
+		if len(lines) == 0 {
+			pieces = append(pieces, piece{clip(head, maxChunk), "\n\n"})
+			continue
+		}
+		pieces = append(pieces, piece{clip(head+"\n"+lines[0], maxChunk), "\n\n"})
+		for _, line := range lines[1:] {
+			pieces = append(pieces, piece{clip(line, maxChunk), "\n"})
+		}
+	}
+
+	var out strings.Builder
+	size := 0
+	flush := func() {
+		if size > 0 {
+			b.reply(ctx, c, chatID, out.String())
+			out.Reset()
+			size = 0
+		}
+	}
+	for _, p := range pieces {
+		n := len([]rune(p.text))
+		if size > 0 && size+len(p.sep)+n > maxChunk {
 			flush()
 		}
-		chunk = append(chunk, item)
+		if size > 0 {
+			out.WriteString(p.sep)
+			size += len(p.sep)
+		}
+		out.WriteString(p.text)
 		size += n
 	}
 	flush()
+}
+
+// memberLines is one line for each member of the group a standing belongs to,
+// or none: a peer in no group has no members to list, and a group of one has
+// nobody else, so a line repeating the one subscription would be noise.
+func memberLines(st store.Standing, tmpl string) []string {
+	if len(st.Members) < 2 {
+		return nil
+	}
+	lines := make([]string, len(st.Members))
+	for i, m := range st.Members {
+		lines[i] = render(tmpl, map[string]string{
+			"name":  m.Name,
+			"used":  formatBytes(m.Used),
+			"group": st.GroupName,
+		})
+	}
+	return lines
+}
+
+// clip cuts s to n characters, not bytes: half a Persian letter is not text.
+func clip(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n])
+	}
+	return s
 }
 
 // unlimited is how a missing limit reads in /list: a symbol, so it needs no
@@ -362,9 +439,11 @@ const unlimited = "∞"
 
 func listValues(st store.Standing, now int64) map[string]string {
 	v := map[string]string{
-		"name":      st.Name,
-		"group":     st.GroupName,
-		"used":      formatBytes(st.OwnUsed),
+		"name":  st.Name,
+		"group": st.GroupName,
+		// For a group member this is the group's total, which is what it is
+		// being measured against; for anyone else it is their own.
+		"used":      formatBytes(st.Used),
 		"allowed":   unlimited,
 		"remaining": unlimited,
 		"expires":   unlimited,

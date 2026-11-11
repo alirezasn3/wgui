@@ -55,9 +55,12 @@ type IPInfoSettings struct {
 //
 // Placeholders are written in braces: {name} everywhere a peer is involved, and
 // {remaining}, {days}, {hours} and {expires} in the two warnings. The /list
-// message is filled in once for each subscription and also has {group},
-// {used} and {allowed}; where a subscription has no limit it reads ∞, which
-// needs no translating.
+// message is filled in once for each subscription — or for each group, when
+// several of its members are on the chat — and also has {group}, {used} and
+// {allowed}; for a group member those are the whole group's figures, and where
+// there is no limit they read ∞, which needs no translating. Under a group's
+// block go the member lines, one for every member of the group, which have
+// {name}, {used} (that member's own) and {group}.
 type TelegramMessages struct {
 	// Linked answers a customer who has just connected a subscription.
 	Linked string `json:"linked"`
@@ -73,6 +76,11 @@ type TelegramMessages struct {
 	List string `json:"list"`
 	// ListEmpty is what /list says when there are none.
 	ListEmpty string `json:"listEmpty"`
+	// ListMember is one line under a group's figures in /list, for each member
+	// of that group, so a customer can see where the group's use went. It is a
+	// message of its own, rather than a placeholder in List, so that settings
+	// saved before it existed — which carry the old List text — still show it.
+	ListMember string `json:"listMember"`
 }
 
 // TelegramSettings configure the warning bot. Its token is a secret and is
@@ -144,6 +152,7 @@ func DefaultSettings() Settings {
 				UsageWarning:  "{name} has only {remaining} of data left. Top it up to stay connected.",
 				List:          "{name}\nData: {used} used of {allowed}, {remaining} left\nExpires: {expires}",
 				ListEmpty:     "No subscription is connected to this chat. Open the link you were given for one to connect it.",
+				ListMember:    "• {name}: {used}",
 			},
 		},
 	}
@@ -239,6 +248,7 @@ func (t *TelegramSettings) Normalize() {
 		{&t.Messages.UsageWarning, &def.UsageWarning},
 		{&t.Messages.List, &def.List},
 		{&t.Messages.ListEmpty, &def.ListEmpty},
+		{&t.Messages.ListMember, &def.ListMember},
 	} {
 		text := strings.TrimSpace(*m.got)
 		if r := []rune(text); len(r) > maxMessageRunes {

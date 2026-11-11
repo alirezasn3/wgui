@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -619,6 +620,10 @@ func TestReconnectingWarnsTheNewChatAgain(t *testing.T) {
 	}
 }
 
+// A group is one pot, so what a member is told is the whole group's: what the
+// group has spent, what it has left, when it ends — and what each of the other
+// members has used, since that is where the spending went. Members that share a
+// chat are told once, with their names together.
 func TestListSaysWhereEachSubscriptionStands(t *testing.T) {
 	f := newFixture(t)
 	now := time.Now().UnixMilli()
@@ -634,20 +639,27 @@ func TestListSaysWhereEachSubscriptionStands(t *testing.T) {
 	f.peer("mom", "Sara-mom", "10.0.0.4/32", func(p *store.Peer) { p.GroupID = g.ID })
 	f.peer("free", "Sara-tv", "10.0.0.5/32", nil)
 	f.peer("else", "Omid-tv", "10.0.0.6/32", nil)
+	// In the same group, but on another customer's phone, and never connected
+	// to any chat at all.
+	f.peer("cousin", "Sara-cousin", "10.0.0.7/32", func(p *store.Peer) { p.GroupID = g.ID })
+	f.peer("quiet", "Sara-quiet", "10.0.0.8/32", func(p *store.Peer) { p.GroupID = g.ID })
 	for _, id := range []string{"solo", "kid", "mom", "free"} {
 		f.connect(id, 100)
 	}
 	f.connect("else", 200)
+	f.connect("cousin", 200)
 	if err := f.st.ApplyUsageDeltas([]store.UsageDelta{
 		{PeerID: "solo", TX: 5 * gib},
 		{PeerID: "kid", TX: 2 * gib},
 		{PeerID: "mom", TX: 40 * gib},
+		{PeerID: "cousin", TX: 10 * gib},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	// A warning would also be sent to this chat; /list is what is under test.
 	f.settings.Telegram.WarnDays, f.settings.Telegram.WarnUsageBytes = 0, 0
 	f.settings.Telegram.Messages.List = "{name} [{group}] used {used} of {allowed}, {remaining} left, expires {expires} ({days} days)"
+	// The member line is left as it ships.
 	f.run()
 
 	f.tg.say(100, "private", "/list@wgui_test_bot")
@@ -656,23 +668,169 @@ func TestListSaysWhereEachSubscriptionStands(t *testing.T) {
 	if len(got) != 1 || got[0].Chat != 100 {
 		t.Fatalf("sent %v, want one message to the chat that asked", texts(got))
 	}
-	lines := strings.Split(got[0].Text, "\n\n")
-	if len(lines) != 4 {
-		t.Fatalf("%d subscriptions in %q, want the four connected to this chat and not the other chat's", len(lines), got[0].Text)
+	blocks := strings.Split(got[0].Text, "\n\n")
+	if len(blocks) != 3 {
+		t.Fatalf("%d blocks in %q, want the family once, and the two others", len(blocks), got[0].Text)
 	}
 	exp := time.UnixMilli(now + 3*day).Format("2006-01-02 15:04 MST")
 	gexp := time.UnixMilli(g.ExpiresAt).Format("2006-01-02 15:04 MST")
 	for i, want := range []string{
-		// Alphabetical. A member's "used" is its own share of the group's
-		// allowance, and what is left is the group's — 42 GiB has gone in all.
-		"Sara-kid [family] used 2.00 GiB of 100.00 GiB, 58.00 GiB left, expires " + gexp + " (10 days)",
-		"Sara-mom [family] used 40.00 GiB of 100.00 GiB, 58.00 GiB left, expires " + gexp + " (10 days)",
+		// Alphabetical. The family has spent 52 GiB in all — 2 and 40 on these
+		// two phones, 10 on the cousin's — so that is what each is told, with 48
+		// left, and under it every member's own share, which add up to the 52:
+		// the cousin who is on another chat, and the one who has used nothing.
+		"Sara-kid, Sara-mom [family] used 52.00 GiB of 100.00 GiB, 48.00 GiB left, expires " + gexp + " (10 days)\n" +
+			"• Sara-cousin: 10.00 GiB\n• Sara-kid: 2.00 GiB\n• Sara-mom: 40.00 GiB\n• Sara-quiet: 0 B",
+		// Not in a group: nothing but their own.
 		"Sara-phone [] used 5.00 GiB of 30.00 GiB, 25.00 GiB left, expires " + exp + " (3 days)",
 		"Sara-tv [] used 0 B of ∞, ∞ left, expires ∞ (∞ days)",
 	} {
-		if lines[i] != want {
-			t.Errorf("subscription %d:\n got %q\nwant %q", i+1, lines[i], want)
+		if blocks[i] != want {
+			t.Errorf("block %d:\n got %q\nwant %q", i+1, blocks[i], want)
 		}
+	}
+
+	// The cousin's own chat, where the cousin is the only member: the whole
+	// group's figures and every member's, not just the 10 GiB that phone has used.
+	f.tg.forget()
+	f.tg.say(200, "private", "/list")
+	eventually(t, "the other chat's list", func() bool { return len(f.tg.messages()) >= 1 })
+	other := strings.Split(f.tg.messages()[0].Text, "\n\n")
+	if len(other) != 2 ||
+		other[0] != "Omid-tv [] used 0 B of ∞, ∞ left, expires ∞ (∞ days)" ||
+		other[1] != "Sara-cousin [family] used 52.00 GiB of 100.00 GiB, 48.00 GiB left, expires "+gexp+" (10 days)\n"+
+			"• Sara-cousin: 10.00 GiB\n• Sara-kid: 2.00 GiB\n• Sara-mom: 40.00 GiB\n• Sara-quiet: 0 B" {
+		t.Errorf("other chat's list = %q", other)
+	}
+}
+
+// A group with nobody else in it has no other members to list, and a line
+// repeating the one subscription would only be noise.
+func TestAGroupOfOneListsNoOneElse(t *testing.T) {
+	f := newFixture(t)
+	g := &store.Group{Name: "just-me", AllowedUsage: 10 << 30}
+	if err := f.st.CreateGroup(g); err != nil {
+		t.Fatal(err)
+	}
+	f.peer("a", "Sara-phone", "10.0.0.2/32", func(p *store.Peer) { p.GroupID = g.ID })
+	f.connect("a", 1)
+	f.settings.Telegram.WarnDays, f.settings.Telegram.WarnUsageBytes = 0, 0
+	f.settings.Telegram.Messages.List = "{name} in {group}"
+	f.run()
+
+	f.tg.say(1, "private", "/list")
+	eventually(t, "the list", func() bool { return len(f.tg.messages()) >= 1 })
+	if got := f.tg.messages()[0].Text; got != "Sara-phone in just-me" {
+		t.Errorf("list = %q, want the one block and no member lines", got)
+	}
+}
+
+// Members' lines are the message's own wording too.
+func TestTheMemberLineIsWhatTheOperatorWrote(t *testing.T) {
+	f := newFixture(t)
+	g := &store.Group{Name: "خانواده", AllowedUsage: 10 << 30}
+	if err := f.st.CreateGroup(g); err != nil {
+		t.Fatal(err)
+	}
+	f.peer("a", "مادر", "10.0.0.2/32", func(p *store.Peer) { p.GroupID = g.ID })
+	f.peer("b", "پدر", "10.0.0.3/32", func(p *store.Peer) { p.GroupID = g.ID })
+	f.connect("a", 1)
+	if err := f.st.ApplyUsageDeltas([]store.UsageDelta{{PeerID: "b", TX: 3 << 30}}); err != nil {
+		t.Fatal(err)
+	}
+	f.settings.Telegram.WarnDays, f.settings.Telegram.WarnUsageBytes = 0, 0
+	f.settings.Telegram.Messages.List = "گروه {group}"
+	f.settings.Telegram.Messages.ListMember = "{name} ← {used} ({group})"
+	f.run()
+
+	f.tg.say(1, "private", "/list")
+	eventually(t, "the list", func() bool { return len(f.tg.messages()) >= 1 })
+	if got, want := f.tg.messages()[0].Text, "گروه خانواده\nمادر ← 0 B (خانواده)\nپدر ← 3.00 GiB (خانواده)"; got != want {
+		t.Errorf("list = %q\nwant   %q", got, want)
+	}
+}
+
+// A group can have more members than fit in one message. It is split between
+// members, never through one, and the group's own figures appear once.
+func TestAGroupTooBigForOneMessageIsSplitBetweenMembers(t *testing.T) {
+	f := newFixture(t)
+	g := &store.Group{Name: "big-group", AllowedUsage: 1 << 40}
+	if err := f.st.CreateGroup(g); err != nil {
+		t.Fatal(err)
+	}
+	const members = 150
+	var names []string
+	for i := 0; i < members; i++ {
+		name := fmt.Sprintf("member-%03d", i)
+		names = append(names, name)
+		f.peer(name, name, fmt.Sprintf("10.1.%d.%d/32", i/250, i%250+1), func(p *store.Peer) { p.GroupID = g.ID })
+	}
+	f.connect("member-000", 9)
+
+	// Ahead of the group, because it sorts first: a subscription whose block fills
+	// most of a message. What is left is room for the group's line by itself —
+	// "member-000|big-group" is 20 characters — but not for that line and the
+	// first member under it, so the group has to start the next message rather
+	// than be left stranded at the end of this one. (Names are not restricted.)
+	solo := strings.Repeat("a", 3449)
+	f.peer("solo", solo, "10.9.9.9/32", nil)
+	f.connect("solo", 9)
+
+	f.settings.Telegram.WarnDays, f.settings.Telegram.WarnUsageBytes = 0, 0
+	f.settings.Telegram.Messages.List = "{name}|{group}"
+	f.settings.Telegram.Messages.ListMember = "{name}: {used} " + strings.Repeat("x", 30)
+	f.run()
+
+	f.tg.say(9, "private", "/list")
+	eventually(t, "every member", func() bool {
+		n := 0
+		for _, m := range f.tg.messages() {
+			n += strings.Count(m.Text, ": 0 B ")
+		}
+		return n == members
+	})
+
+	got := f.tg.messages()
+	if len(got) < 2 {
+		t.Fatalf("%d messages, want 150 long lines split over several", len(got))
+	}
+	seen := map[string]int{}
+	heads := 0
+	for _, m := range got {
+		if n := len([]rune(m.Text)); n > 4096 {
+			t.Errorf("a message is %d characters, over Telegram's 4096", n)
+		}
+		for _, line := range strings.Split(m.Text, "\n") {
+			switch {
+			case line == "member-000|big-group":
+				heads++
+			case line == solo+"|":
+			case strings.HasSuffix(line, ": 0 B "+strings.Repeat("x", 30)):
+				seen[strings.SplitN(line, ":", 2)[0]]++
+			default:
+				t.Errorf("a line was cut or is not a member's: %q", line)
+			}
+		}
+	}
+	if heads != 1 {
+		t.Errorf("the group's own line appears %d times, want once", heads)
+	}
+	for _, name := range names {
+		if seen[name] != 1 {
+			t.Errorf("%s appears %d times, want exactly once", name, seen[name])
+		}
+	}
+	// The group's line is never left alone at the end of a message, away from
+	// the members it introduces: the large subscription has the first message to
+	// itself, and the group begins the second.
+	for i, m := range got {
+		if lines := strings.Split(m.Text, "\n"); lines[len(lines)-1] == "member-000|big-group" {
+			t.Errorf("message %d ends on the group's line with its members in the next", i+1)
+		}
+	}
+	if got[0].Text != solo+"|" || !strings.HasPrefix(got[1].Text, "member-000|big-group\nmember-000: ") {
+		t.Errorf("first message %q…, second %q…; want the large subscription alone, then the group with its first member",
+			got[0].Text[:min(20, len(got[0].Text))], got[1].Text[:min(60, len(got[1].Text))])
 	}
 }
 
