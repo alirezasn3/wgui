@@ -81,6 +81,10 @@ type TelegramMessages struct {
 	// message of its own, rather than a placeholder in List, so that settings
 	// saved before it existed — which carry the old List text — still show it.
 	ListMember string `json:"listMember"`
+	// ListNameColumn and ListUsedColumn head the table that takes the place of the
+	// member lines when tables are on. Plain text, like the rest.
+	ListNameColumn string `json:"listNameColumn"`
+	ListUsedColumn string `json:"listUsedColumn"`
 }
 
 // TelegramSettings configure the warning bot. Its token is a secret and is
@@ -91,8 +95,13 @@ type TelegramSettings struct {
 	WarnDays int `json:"warnDays"`
 	// WarnUsageBytes warns a peer when this much or less of its allowance is
 	// left. 0 turns the warning off.
-	WarnUsageBytes int64            `json:"warnUsageBytes"`
-	Messages       TelegramMessages `json:"messages"`
+	WarnUsageBytes int64 `json:"warnUsageBytes"`
+	// Tables sends /list as one of Telegram's rich messages, with each group's
+	// members in a table, instead of plain text. Off by default: rich messages are
+	// new, and what an app that predates them shows is not documented, so this is
+	// for an operator to try on their own phone first.
+	Tables   bool             `json:"tables"`
+	Messages TelegramMessages `json:"messages"`
 }
 
 // maxMessageRunes keeps a message well inside Telegram's 4096-character limit
@@ -145,14 +154,16 @@ func DefaultSettings() Settings {
 			WarnDays:       1,
 			WarnUsageBytes: 1 << 30,
 			Messages: TelegramMessages{
-				Linked:        "{name} is connected. You will get a message here before its data or time runs out.",
-				Invalid:       "That link is not valid any more. Ask for a new one.",
-				Help:          "I warn you before your data or time runs out. Send /list to see where your subscriptions stand. To connect a subscription, open the link you were given for it.",
-				ExpiryWarning: "{name} expires on {expires}. Renew it before then to stay connected.",
-				UsageWarning:  "{name} has only {remaining} of data left. Top it up to stay connected.",
-				List:          "{name}\nData: {used} used of {allowed}, {remaining} left\nExpires: {expires}",
-				ListEmpty:     "No subscription is connected to this chat. Open the link you were given for one to connect it.",
-				ListMember:    "• {name}: {used}",
+				Linked:         "{name} is connected. You will get a message here before its data or time runs out.",
+				Invalid:        "That link is not valid any more. Ask for a new one.",
+				Help:           "I warn you before your data or time runs out. Send /list to see where your subscriptions stand. To connect a subscription, open the link you were given for it.",
+				ExpiryWarning:  "{name} expires on {expires}. Renew it before then to stay connected.",
+				UsageWarning:   "{name} has only {remaining} of data left. Top it up to stay connected.",
+				List:           "{name}\nData: {used} used of {allowed}, {remaining} left\nExpires: {expires}",
+				ListEmpty:      "No subscription is connected to this chat. Open the link you were given for one to connect it.",
+				ListMember:     "• {name}: {used}",
+				ListNameColumn: "Name",
+				ListUsedColumn: "Used",
 			},
 		},
 	}
@@ -249,6 +260,8 @@ func (t *TelegramSettings) Normalize() {
 		{&t.Messages.List, &def.List},
 		{&t.Messages.ListEmpty, &def.ListEmpty},
 		{&t.Messages.ListMember, &def.ListMember},
+		{&t.Messages.ListNameColumn, &def.ListNameColumn},
+		{&t.Messages.ListUsedColumn, &def.ListUsedColumn},
 	} {
 		text := strings.TrimSpace(*m.got)
 		if r := []rune(text); len(r) > maxMessageRunes {

@@ -27,13 +27,22 @@ type fakeTelegram struct {
 	sent    []sentMessage
 	// failChat makes sendMessage to a chat fail with the given Telegram error.
 	failChat map[int64]fakeFailure
-	nextID   int64
-	username string
+	// failRich makes every sendRichMessage fail, and richCalls counts them either
+	// way, so a test can tell "tried and was refused" from "never tried".
+	failRich  *fakeFailure
+	richCalls int
+	nextID    int64
+	username  string
 }
 
 type sentMessage struct {
 	Chat int64
+	// Text is the message, or for a rich message its HTML.
 	Text string
+	// The rest describe a rich message.
+	Rich       bool
+	RTL        bool
+	SkipDetect bool
 }
 
 type fakeFailure struct {
@@ -77,7 +86,7 @@ func newFakeTelegram(t *testing.T) *fakeTelegram {
 			f.mu.Lock()
 			failure, failing := f.failChat[chat]
 			if !failing {
-				f.sent = append(f.sent, sentMessage{chat, params["text"].(string)})
+				f.sent = append(f.sent, sentMessage{Chat: chat, Text: params["text"].(string)})
 			}
 			f.mu.Unlock()
 			if failing {
@@ -86,6 +95,38 @@ func newFakeTelegram(t *testing.T) *fakeTelegram {
 					body["parameters"] = map[string]any{"retry_after": failure.retryAfter}
 				}
 				reply(body)
+				return
+			}
+			reply(map[string]any{"ok": true, "result": map[string]any{}})
+		case "sendRichMessage":
+			// As documented: rich_message carries exactly one of html, markdown or
+			// blocks, and there is no top-level text or parse_mode.
+			rich, _ := params["rich_message"].(map[string]any)
+			content := 0
+			for _, k := range []string{"html", "markdown", "blocks"} {
+				if _, ok := rich[k]; ok {
+					content++
+				}
+			}
+			_, hasText := params["text"]
+			_, hasMode := params["parse_mode"]
+			if content != 1 || hasText || hasMode {
+				fail(400, "Bad Request: rich_message must have exactly one of html, markdown or blocks")
+				return
+			}
+			chat := int64(params["chat_id"].(float64))
+			f.mu.Lock()
+			f.richCalls++
+			failure := f.failRich
+			if failure == nil {
+				html, _ := rich["html"].(string)
+				rtl, _ := rich["is_rtl"].(bool)
+				skip, _ := rich["skip_entity_detection"].(bool)
+				f.sent = append(f.sent, sentMessage{Chat: chat, Text: html, Rich: true, RTL: rtl, SkipDetect: skip})
+			}
+			f.mu.Unlock()
+			if failure != nil {
+				fail(failure.code, failure.description)
 				return
 			}
 			reply(map[string]any{"ok": true, "result": map[string]any{}})
@@ -916,5 +957,216 @@ func TestALongListIsSplitBetweenSubscriptionsNotThroughOne(t *testing.T) {
 		if seen[name] != 1 {
 			t.Errorf("%s appears %d times, want exactly once", name, seen[name])
 		}
+	}
+}
+
+func (f *fakeTelegram) richAttempts() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.richCalls
+}
+
+// With tables on, /list is one rich message: the group's figures as paragraphs and
+// every member in a table under them, the next subscription after a divider. Every
+// piece of text that came from somewhere else is escaped, since a name is whatever
+// someone typed.
+func TestListAsATable(t *testing.T) {
+	f := newFixture(t)
+	const gib = int64(1 << 30)
+	g := &store.Group{Name: "family", AllowedUsage: 100 * gib}
+	if err := f.st.CreateGroup(g); err != nil {
+		t.Fatal(err)
+	}
+	f.peer("kid", "Sara-kid", "10.0.0.3/32", func(p *store.Peer) { p.GroupID = g.ID })
+	f.peer("mom", "Sara-mom", "10.0.0.4/32", func(p *store.Peer) { p.GroupID = g.ID })
+	f.peer("cousin", "Sara-cousin", "10.0.0.7/32", func(p *store.Peer) { p.GroupID = g.ID })
+	// A name with a line break in it, which a table cell cannot hold.
+	f.peer("odd", "Line\nBreak", "10.0.0.8/32", func(p *store.Peer) { p.GroupID = g.ID })
+	f.peer("tom", `Tom <b>&"x"`, "10.0.0.5/32", func(p *store.Peer) { p.AllowedUsage = 30 * gib })
+	for _, id := range []string{"kid", "mom", "tom"} {
+		f.connect(id, 1)
+	}
+	if err := f.st.ApplyUsageDeltas([]store.UsageDelta{
+		{PeerID: "kid", TX: 2 * gib}, {PeerID: "mom", TX: 40 * gib},
+		{PeerID: "cousin", TX: 10 * gib}, {PeerID: "tom", TX: 5 * gib},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.settings.Telegram.WarnDays, f.settings.Telegram.WarnUsageBytes = 0, 0
+	f.settings.Telegram.Tables = true
+	f.settings.Telegram.Messages.List = "{name}\nused {used} of {allowed}"
+	f.run()
+
+	f.tg.say(1, "private", "/list")
+	eventually(t, "the list", func() bool { return len(f.tg.messages()) >= 1 })
+	got := f.tg.messages()
+	if len(got) != 1 || !got[0].Rich {
+		t.Fatalf("sent %+v, want one rich message", got)
+	}
+	want := `<p>Sara-kid, Sara-mom</p><p>used 52.00 GiB of 100.00 GiB</p>` +
+		`<table bordered><tr><th>Name</th><th>Used</th></tr>` +
+		`<tr><td>Line Break</td><td>0 B</td></tr>` +
+		`<tr><td>Sara-cousin</td><td>10.00 GiB</td></tr>` +
+		`<tr><td>Sara-kid</td><td>2.00 GiB</td></tr>` +
+		`<tr><td>Sara-mom</td><td>40.00 GiB</td></tr></table>` +
+		`<hr/><p>Tom &lt;b&gt;&amp;"x"</p><p>used 5.00 GiB of 30.00 GiB</p>`
+	if got[0].Text != want {
+		t.Errorf("html:\n got %s\nwant %s", got[0].Text, want)
+	}
+	if !got[0].SkipDetect {
+		t.Error("a name or a figure may be turned into a mention, hashtag or command; detection should be off")
+	}
+	if got[0].RTL {
+		t.Error("English wording was sent right-to-left")
+	}
+}
+
+// The direction is that of the operator's own wording, not of the names in it:
+// a Persian message about subscriptions named in English is still Persian.
+func TestARightToLeftListIsSentRightToLeft(t *testing.T) {
+	f := newFixture(t)
+	g := &store.Group{Name: "خانواده", AllowedUsage: 10 << 30}
+	if err := f.st.CreateGroup(g); err != nil {
+		t.Fatal(err)
+	}
+	f.peer("a", "Sara-phone", "10.0.0.2/32", func(p *store.Peer) { p.GroupID = g.ID })
+	f.peer("b", "Sara-kid", "10.0.0.3/32", func(p *store.Peer) { p.GroupID = g.ID })
+	f.connect("a", 1)
+	f.settings.Telegram.WarnDays, f.settings.Telegram.WarnUsageBytes = 0, 0
+	f.settings.Telegram.Tables = true
+	f.settings.Telegram.Messages.List = "اشتراک {name}\nمصرف {used} از {allowed}"
+	f.settings.Telegram.Messages.ListNameColumn = "نام"
+	f.settings.Telegram.Messages.ListUsedColumn = "مصرف"
+	f.run()
+
+	f.tg.say(1, "private", "/list")
+	eventually(t, "the list", func() bool { return len(f.tg.messages()) >= 1 })
+	got := f.tg.messages()[0]
+	if !got.Rich || !got.RTL {
+		t.Errorf("rich=%v rtl=%v, want a right-to-left rich message", got.Rich, got.RTL)
+	}
+	if !strings.Contains(got.Text, "<th>نام</th><th>مصرف</th>") {
+		t.Errorf("the column headings are not the operator's: %s", got.Text)
+	}
+
+	for text, want := range map[string]bool{
+		"Data {used} of {allowed}":           false,
+		"مصرف {used} از {allowed}":           true,
+		"{name} {used}":                      false, // nothing to go on
+		"מנוי {name} השתמש":                  true,
+		"Sara-phone اشتراک":                  false, // more Latin letters than Persian
+		"{name} اشتراک {used} مصرف شده Data": true,
+	} {
+		if got := rightToLeft(text); got != want {
+			t.Errorf("rightToLeft(%q) = %v, want %v", text, got, want)
+		}
+	}
+}
+
+// Nobody is promised tables until they have looked at them on a phone, so they
+// are off unless asked for, and then plain /list is exactly what it was.
+func TestTablesAreOffUnlessAskedFor(t *testing.T) {
+	f := newFixture(t)
+	g := &store.Group{Name: "g", AllowedUsage: 10 << 30}
+	if err := f.st.CreateGroup(g); err != nil {
+		t.Fatal(err)
+	}
+	f.peer("a", "A", "10.0.0.2/32", func(p *store.Peer) { p.GroupID = g.ID })
+	f.peer("b", "B", "10.0.0.3/32", func(p *store.Peer) { p.GroupID = g.ID })
+	f.connect("a", 1)
+	f.settings.Telegram.WarnDays, f.settings.Telegram.WarnUsageBytes = 0, 0
+	f.run()
+
+	f.tg.say(1, "private", "/list")
+	eventually(t, "the list", func() bool { return len(f.tg.messages()) >= 1 })
+	if got := f.tg.messages()[0]; got.Rich || !strings.Contains(got.Text, "• B: 0 B") {
+		t.Errorf("sent %+v, want the plain list with its bullet lines", got)
+	}
+	if n := f.tg.richAttempts(); n != 0 {
+		t.Errorf("%d rich messages were attempted with tables off", n)
+	}
+}
+
+// What Telegram does with a rich message it cannot take is not documented, and
+// neither is what an app that predates them shows. The first the bot can handle:
+// when Telegram refuses, the customer gets the plain list.
+func TestARefusedTableFallsBackToPlainText(t *testing.T) {
+	f := newFixture(t)
+	f.peer("a", "Sara-phone", "10.0.0.2/32", nil)
+	f.connect("a", 1)
+	f.settings.Telegram.WarnDays, f.settings.Telegram.WarnUsageBytes = 0, 0
+	f.settings.Telegram.Tables = true
+	f.settings.Telegram.Messages.List = "{name} is fine"
+	f.tg.failRich = &fakeFailure{code: 400, description: "Bad Request: can't parse rich message"}
+	f.run()
+
+	f.tg.say(1, "private", "/list")
+	eventually(t, "the plain list", func() bool { return len(f.tg.messages()) >= 1 })
+	got := f.tg.messages()
+	if len(got) != 1 || got[0].Rich || got[0].Text != "Sara-phone is fine" {
+		t.Errorf("sent %+v, want the plain list once Telegram refused the table", got)
+	}
+	if n := f.tg.richAttempts(); n != 1 {
+		t.Errorf("%d attempts at a table, want one", n)
+	}
+}
+
+// A refusal that is about the chat, not the format, would be the same for plain
+// text, so it is not tried again as plain text.
+func TestABlockedChatIsNotRetriedAsPlainText(t *testing.T) {
+	f := newFixture(t)
+	f.peer("a", "a", "10.0.0.2/32", nil)
+	f.connect("a", 1)
+	f.settings.Telegram.WarnDays, f.settings.Telegram.WarnUsageBytes = 0, 0
+	f.settings.Telegram.Tables = true
+	f.tg.failRich = &fakeFailure{code: 403, description: "Forbidden: bot was blocked by the user"}
+	f.run()
+
+	f.tg.say(1, "private", "/list")
+	f.tg.say(2, "private", "hello") // answered after the list has been dealt with
+	eventually(t, "the marker", func() bool { return len(f.tg.messages()) >= 1 })
+	if got := f.tg.messages(); len(got) != 1 || got[0].Chat != 2 {
+		t.Errorf("sent %+v, want only the marker's answer: nothing more to a chat that refused", got)
+	}
+}
+
+// Telegram documents 32768 characters and 500 blocks for a rich message. A list
+// that is nowhere near is sent as a table; one that would be close goes as plain
+// text, which already knows how to be cut between members, rather than risk a
+// refusal.
+func TestAListTooBigForOneRichMessageGoesAsPlainText(t *testing.T) {
+	f := newFixture(t)
+	g := &store.Group{Name: "huge", AllowedUsage: 1 << 40}
+	if err := f.st.CreateGroup(g); err != nil {
+		t.Fatal(err)
+	}
+	const members = 520
+	for i := 0; i < members; i++ {
+		name := fmt.Sprintf("member-%03d", i)
+		f.peer(name, name, fmt.Sprintf("10.3.%d.%d/32", i/250, i%250+1), func(p *store.Peer) { p.GroupID = g.ID })
+	}
+	f.connect("member-000", 1)
+	f.settings.Telegram.WarnDays, f.settings.Telegram.WarnUsageBytes = 0, 0
+	f.settings.Telegram.Tables = true
+	f.run()
+
+	f.tg.say(1, "private", "/list")
+	eventually(t, "the plain list", func() bool {
+		n := 0
+		for _, m := range f.tg.messages() {
+			n += strings.Count(m.Text, "• member-")
+		}
+		return n == members
+	})
+	for _, m := range f.tg.messages() {
+		if m.Rich {
+			t.Error("a list of 520 rows was sent as one rich message")
+		}
+	}
+	if n := f.tg.richAttempts(); n != 0 {
+		t.Errorf("%d attempts at a table that was known not to fit", n)
+	}
+	if len(f.tg.messages()) < 2 {
+		t.Error("the plain list was not split")
 	}
 }

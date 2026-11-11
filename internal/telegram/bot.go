@@ -7,10 +7,12 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"wgui/internal/config"
 	"wgui/internal/store"
@@ -341,22 +343,22 @@ func (b *Bot) list(ctx context.Context, c *client, chatID int64) {
 		return
 	}
 
-	type entry struct {
-		names []string
-		st    store.Standing
-	}
-	var entries []*entry
-	byGroup := map[int64]*entry{}
+	var entries []*listEntry
+	byGroup := map[int64]*listEntry{}
 	for _, st := range standings {
 		if e, ok := byGroup[st.GroupID]; ok && st.GroupID != 0 {
 			e.names = append(e.names, st.Name)
 			continue
 		}
-		e := &entry{names: []string{st.Name}, st: st}
+		e := &listEntry{names: []string{st.Name}, st: st}
 		entries = append(entries, e)
 		if st.GroupID != 0 {
 			byGroup[st.GroupID] = e
 		}
+	}
+
+	if b.opt.Settings().Telegram.Tables && b.richList(ctx, c, chatID, entries, msgs, now) {
+		return
 	}
 
 	// A message is built from pieces, each with what separates it from the one
@@ -405,6 +407,126 @@ func (b *Bot) list(ctx context.Context, c *client, chatID int64) {
 		size += n
 	}
 	flush()
+}
+
+// listEntry is one block of /list: a subscription, or a group together with those
+// of its members that are connected to the chat asking.
+type listEntry struct {
+	names []string
+	st    store.Standing
+}
+
+// Telegram documents 32768 characters and 500 blocks for a rich message. A list
+// stays well clear of both, so that one that would be close is sent as plain text
+// — which already knows how to be cut between members — rather than risk a refusal
+// that is not documented anywhere.
+const (
+	richMaxChars  = 30000
+	richMaxBlocks = 450
+)
+
+// richList sends the list as one rich message, with a table of each group's
+// members, and reports whether that settled the matter. False means nothing was
+// sent and the caller should send the plain list.
+func (b *Bot) richList(ctx context.Context, c *client, chatID int64, entries []*listEntry, msgs config.TelegramMessages, now int64) bool {
+	html, blocks := richHTML(entries, msgs, now)
+	if html == "" || blocks > richMaxBlocks || len([]rune(html)) > richMaxChars {
+		return false
+	}
+
+	// The direction is the operator's own wording's, not the names' in it: a
+	// Persian message about subscriptions named in English is still Persian.
+	rtl := rightToLeft(msgs.List, msgs.ListNameColumn, msgs.ListUsedColumn)
+	err := c.sendRichMessage(ctx, chatID, html, rtl)
+	if err == nil || ctx.Err() != nil {
+		return true
+	}
+
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && (apiErr.blocked() || apiErr.Code == http.StatusTooManyRequests) {
+		// About the chat, not the format: plain text would be refused the same way.
+		b.opt.Log.Warn("replying on telegram failed", "error", describe(err))
+		return true
+	}
+	b.opt.Log.Warn("telegram would not take the list as a table; sending it as plain text", "error", describe(err))
+	return false
+}
+
+// richHTML writes the list in Telegram's rich HTML, and counts the blocks it is
+// made of, which is what the limit is on.
+//
+// Everything in it that came from elsewhere is escaped — names are whatever
+// someone typed — and nothing is written between tags, since what the dialect
+// makes of whitespace is not documented. Each line of the operator's wording is a
+// paragraph of its own for the same reason: a line break inside one is not.
+func richHTML(entries []*listEntry, msgs config.TelegramMessages, now int64) (string, int) {
+	var sb strings.Builder
+	blocks := 0
+	for i, e := range entries {
+		if i > 0 {
+			sb.WriteString("<hr/>")
+			blocks++
+		}
+
+		values := listValues(e.st, now)
+		values["name"] = strings.Join(e.names, ", ")
+		for _, line := range strings.Split(render(msgs.List, values), "\n") {
+			if line = oneLine(line); line != "" {
+				sb.WriteString("<p>" + richEscape(line) + "</p>")
+				blocks++
+			}
+		}
+
+		if len(e.st.Members) < 2 {
+			continue
+		}
+		sb.WriteString("<table bordered><tr><th>" + richEscape(oneLine(msgs.ListNameColumn)) +
+			"</th><th>" + richEscape(oneLine(msgs.ListUsedColumn)) + "</th></tr>")
+		blocks += 2 // the table, and the row of headings
+		for _, m := range e.st.Members {
+			sb.WriteString("<tr><td>" + richEscape(oneLine(m.Name)) + "</td><td>" +
+				richEscape(formatBytes(m.Used)) + "</td></tr>")
+			blocks++
+		}
+		sb.WriteString("</table>")
+	}
+	return sb.String(), blocks
+}
+
+// richEscape makes text safe to put between tags. The named entities Telegram
+// lists as understood include these three, and all numeric ones.
+var richEscape = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace
+
+// oneLine turns whatever whitespace and control characters a name or a line holds
+// into single spaces, which is all a table cell or a paragraph can show.
+func oneLine(s string) string {
+	return strings.Join(strings.Fields(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s)), " ")
+}
+
+var placeholder = regexp.MustCompile(`\{[a-z]+\}`)
+
+// rightToLeft reports whether the text reads right to left: whether more of its
+// letters are in a right-to-left script than in any other. Placeholders do not
+// count, since what replaces them is not the operator's wording.
+func rightToLeft(texts ...string) bool {
+	rtl, other := 0, 0
+	for _, t := range texts {
+		for _, r := range placeholder.ReplaceAllString(t, "") {
+			switch {
+			case !unicode.IsLetter(r):
+			case unicode.In(r, unicode.Arabic, unicode.Hebrew, unicode.Syriac, unicode.Thaana):
+				rtl++
+			default:
+				other++
+			}
+		}
+	}
+	return rtl > other
 }
 
 // memberLines is one line for each member of the group a standing belongs to,

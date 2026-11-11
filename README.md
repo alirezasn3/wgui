@@ -685,11 +685,11 @@ subscription whose whole allowance is smaller than the threshold is warned as so
 as it is connected; lower the threshold if that is not what you want.
 
 **What it says.** Everything the bot says is text you can change, because your
-customers are the ones reading it. Under *What the bot says* are eight messages:
+customers are the ones reading it. Under *What the bot says* are ten messages:
 the confirmation, the answer to a link that does not work, the answer to anything
-else sent to the bot, the two warnings, and three for `/list` — what it says about
-each subscription, the line under a group for each of its members, and what it says
-when there are none. They are plain
+else sent to the bot, the two warnings, and five for `/list` — what it says about
+each subscription, the line under a group for each of its members, the two column
+headings used when `/list` is a table, and what it says when there are none. They are plain
 text with `{placeholders}`: `{name}` is the subscription, and the warnings also
 have `{remaining}`, `{expires}`, `{days}` and `{hours}`. The `/list` message is
 filled in once for each subscription — or once for a group, when several of its
@@ -704,6 +704,29 @@ ask for a renewal. A message left empty gets its default back.
 ```
 حجم اشتراک {name} کمتر از {remaining} است. برای تمدید پیام دهید: https://t.me/youradmin
 ```
+
+**Tables.** Telegram added *rich messages* in June 2026, which can hold a table.
+Switch on **Send /list as a table** in Settings and a group's members go in a
+two-column table (name, used) under the group's figures, instead of the bulleted
+lines, with a divider between one subscription and the next. The headings are two
+more of the messages above, so they can be in your customers' language. The whole
+reply is one message, which also means a long group is no longer cut into several.
+
+It is off by default, and worth trying on your own phone first. What a Telegram app
+that predates rich messages shows is not something Telegram documents, and neither
+is what it does with a message it will not take. So: if Telegram refuses one, the
+plain list is sent instead; a list too large for one rich message (about 450 rows) is
+sent as plain text from the start; and a refusal that is about the chat — a customer
+who has blocked the bot — is not tried again as plain text.
+
+Everything in the table that came from elsewhere is escaped, since a name is
+whatever someone typed, and Telegram is told not to turn names or figures into
+mentions, hashtags, commands or links. The cost of that last part is that a link in
+the `/list` message is not made tappable when it is a table. The message is sent
+right-to-left when the operator's own wording is: more of its letters in Arabic,
+Persian, Hebrew or another right-to-left script than in any other, not counting the
+placeholders, so a Persian message about subscriptions named in English is still
+Persian. The member line message is not used in a table; the column headings are.
 
 **Where it runs.** On the master only. Two servers reading one bot's messages take
 them from each other, and every warning would go out twice. On a node, Settings

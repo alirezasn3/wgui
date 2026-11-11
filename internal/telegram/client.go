@@ -169,6 +169,22 @@ func (c *client) getUpdates(ctx context.Context, offset int64, timeout int) ([]u
 	return out, err
 }
 
+// sendRichMessage sends a Telegram rich message — the kind that can hold a table —
+// written in its HTML dialect. It is a method of its own rather than an option of
+// sendMessage: the content goes in rich_message, and there is no parse_mode.
+func (c *client) sendRichMessage(ctx context.Context, chatID int64, html string, rtl bool) error {
+	return c.call(ctx, "sendRichMessage", map[string]any{
+		"chat_id": chatID,
+		"rich_message": map[string]any{
+			"html":   html,
+			"is_rtl": rtl,
+			// What is in a table is names and figures, which are not mentions,
+			// hashtags, commands or links however much one may look like one.
+			"skip_entity_detection": true,
+		},
+	}, nil)
+}
+
 func (c *client) sendMessage(ctx context.Context, chatID int64, text string) error {
 	return c.call(ctx, "sendMessage", map[string]any{
 		"chat_id":                  chatID,

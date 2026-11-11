@@ -4,6 +4,41 @@ Each version's section becomes its release notes on GitHub, and is what a
 running panel shows an admin before installing the update. Newest first;
 `make release` refuses a tag that has no section here.
 
+## v2.4.0
+
+### Added
+
+- **`/list` as a table.** Telegram added rich messages in June 2026, which can hold
+  a table. Switch on *Send /list as a table* under Settings → Telegram bot and a
+  group's members go in a two-column table (name, used) under the group's figures,
+  with a divider between subscriptions, in one message instead of several. The
+  column headings are two more messages you can write in your customers' language,
+  and the message is sent right-to-left when your wording is.
+- **It is off by default, and falls back safely.** What an older Telegram app shows
+  for a rich message is not documented, so try it on your own phone first. If
+  Telegram refuses one, the plain list is sent instead, and a list too large for
+  one rich message goes as plain text from the start. Names are escaped, and not
+  turned into mentions, hashtags or links; the cost is that a link in the `/list`
+  message is not tappable when it is a table.
+
+### Changed
+
+- **`/list` shows a group's whole figures, and every member.** A member used to see
+  how much its own phone had used next to how much the group had left. It now sees
+  what the group has spent in all, what it has left and when it ends, and under that
+  a line for each member of the group — including members on other chats — with
+  what each has used, adding up to the group's total. Members of one group on the
+  same chat are listed once, with their names together. A member now sees the names
+  and use of everyone in its group.
+- A group with more members than fit in one message is carried over between
+  members, never through one.
+
+### Upgrading
+
+Nothing to do: the database is unchanged, and the new settings keep their defaults
+on a server whose settings were saved by an earlier version, so tables stay off
+until you turn them on. Only the master runs the bot, so update it first.
+
 ## v2.3.0
 
 ### Added

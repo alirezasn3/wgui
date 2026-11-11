@@ -152,6 +152,8 @@ export interface TelegramMessages {
 	list: string;
 	listEmpty: string;
 	listMember: string;
+	listNameColumn: string;
+	listUsedColumn: string;
 }
 
 export interface TelegramSettings {
@@ -159,6 +161,8 @@ export interface TelegramSettings {
 	warnDays: number;
 	/** Warn when this much or less of the allowance is left. 0 turns it off. */
 	warnUsageBytes: number;
+	/** Send /list as a Telegram rich message, with a table of each group's members. */
+	tables: boolean;
 	messages: TelegramMessages;
 }
 

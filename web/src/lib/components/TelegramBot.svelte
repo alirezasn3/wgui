@@ -108,6 +108,18 @@
 			hint: 'One line under the group’s figures for every member of the group, including those on other chats. {name}, {used} (that member’s own) and {group}. The lines add up to the group’s total.'
 		},
 		{
+			key: 'listNameColumn',
+			label: 'Table: heading of the names column',
+			hint: 'Only when /list is sent as a table.',
+			rows: 1
+		},
+		{
+			key: 'listUsedColumn',
+			label: 'Table: heading of the usage column',
+			hint: '',
+			rows: 1
+		},
+		{
 			key: 'listEmpty',
 			label: 'What /list says when nothing is connected',
 			hint: ''
@@ -239,6 +251,21 @@
 		again. A group's members are warned about the group's limits, which are the ones that apply to
 		them. Peers already cut off, or switched off by hand, are not warned.
 	</p>
+
+	<!-- Tables -->
+	<label class="mb-4 flex cursor-pointer items-start gap-2 text-sm">
+		<input type="checkbox" class="mt-0.5 accent-[var(--primary)]" bind:checked={telegram.tables} />
+		<span>
+			Send /list as a table
+			<span class="block text-[11px]" style="color: var(--text-faint)">
+				Uses Telegram’s rich messages, added in June 2026: a group’s members go in a table instead
+				of a bulleted list. Off until you have looked at it on your own phone — what a Telegram app
+				that predates rich messages shows is not something Telegram documents. If Telegram refuses
+				one, the plain list is sent instead. In a table, links in the message are not made tappable,
+				and the member line below is not used; its two column headings are.
+			</span>
+		</span>
+	</label>
 
 	<!-- Messages -->
 	<details>

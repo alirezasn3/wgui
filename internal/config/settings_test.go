@@ -14,7 +14,17 @@ func TestTelegramSettingsAreRepairedNotRejected(t *testing.T) {
 	s.Telegram.Messages.ExpiryWarning = ""
 	s.Telegram.Messages.UsageWarning = "  trimmed {name}  "
 	s.Telegram.Messages.ListMember = " "
+	s.Telegram.Messages.ListNameColumn = ""
+	s.Telegram.Messages.ListUsedColumn = "   "
 	s.Normalize()
+	if s.Telegram.Messages.ListNameColumn != def.Messages.ListNameColumn || s.Telegram.Messages.ListUsedColumn != def.Messages.ListUsedColumn ||
+		def.Messages.ListNameColumn == "" || def.Messages.ListUsedColumn == "" {
+		t.Errorf("empty column headings = %q / %q, want the defaults %q / %q", s.Telegram.Messages.ListNameColumn,
+			s.Telegram.Messages.ListUsedColumn, def.Messages.ListNameColumn, def.Messages.ListUsedColumn)
+	}
+	if def.Tables {
+		t.Error("tables are on by default; nobody has seen them on a phone yet")
+	}
 	if s.Telegram.Messages.Linked != def.Messages.Linked || s.Telegram.Messages.ExpiryWarning != def.Messages.ExpiryWarning {
 		t.Errorf("empty messages = %q / %q, want the defaults back", s.Telegram.Messages.Linked, s.Telegram.Messages.ExpiryWarning)
 	}

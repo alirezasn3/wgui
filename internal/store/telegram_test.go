@@ -325,8 +325,13 @@ func TestSettingsSavedBeforeTheMemberLineExistedGetItsDefault(t *testing.T) {
 	if m.Linked != "hello {name}" || m.List != "{name} only" || got.Telegram.WarnDays != 3 {
 		t.Errorf("what was saved changed: %+v", got.Telegram)
 	}
-	if def := config.DefaultSettings().Telegram.Messages.ListMember; m.ListMember == "" || m.ListMember != def {
-		t.Errorf("member line = %q, want the default %q", m.ListMember, def)
+	def := config.DefaultSettings().Telegram
+	if m.ListMember == "" || m.ListMember != def.Messages.ListMember {
+		t.Errorf("member line = %q, want the default %q", m.ListMember, def.Messages.ListMember)
+	}
+	// Likewise what the table option adds: off, with its headings in place.
+	if got.Telegram.Tables || m.ListNameColumn != def.Messages.ListNameColumn || m.ListUsedColumn != def.Messages.ListUsedColumn {
+		t.Errorf("tables=%v, headings %q / %q, want off and the defaults", got.Telegram.Tables, m.ListNameColumn, m.ListUsedColumn)
 	}
 }
 
